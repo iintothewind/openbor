@@ -15,7 +15,9 @@
 #include "video.h"
 
 static vita2d_texture *vitaTexture[2] = {NULL, NULL};
-static unsigned char vitaPalette[PAL_BYTES];
+/* PAL_BYTES 展开为 pixelbytes[PIXEL_32]*256，非编译期常量，现代 GCC 拒绝文件作用域 VLA。
+   pixelbytes[PIXEL_32]==4，故 PAL_BYTES==1024，用字面量常量等价且合法。 */
+static unsigned char vitaPalette[1024];
 static int vitaBrightness = 0;
 static unsigned char vitaBytesPerPixel = 1;
 

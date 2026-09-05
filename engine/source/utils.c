@@ -304,7 +304,10 @@ void *checkAlloc(void *ptr, size_t size, const char *func, const char *file, int
         writeToLogFile("Out of memory!\n");
         writeToLogFile("Allocation of size %i failed in function '%s' at %s:%i.\n", size, func, file, line);
 #ifndef WIN
+#ifndef DARWIN
+        // mallinfo() is glibc-only; not available on Apple libc.
         writeToLogFile("Memory usage at exit: %u\n", mallinfo().arena);
+#endif
 #endif
         borExit(2);
     }

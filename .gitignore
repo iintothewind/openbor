@@ -4,3 +4,6 @@
 OpenBOR.elf
 meta.xml
 engine/releases/
+
+# Reasonix 运行器状态目录
+.reasonix/

@@ -24,7 +24,8 @@
 /* Define the module info section */
 PSP_MODULE_INFO(VERSION_NAME, PSP_MODULE_USER, 3, 0);
 PSP_MAIN_THREAD_ATTR(PSP_THREAD_ATTR_USER);
-PSP_HEAP_SIZE_MAX();
+/* PSP_HEAP_SIZE_MAX() 在 PSP SDK 已被移除；顶层无类型函数声明在现代 GCC 下是硬 error。 */
+//PSP_HEAP_SIZE_MAX();
 
 typedef void (*WriteToIO)(const char *msg, ...);
 static WriteToIO pWriteToIO;

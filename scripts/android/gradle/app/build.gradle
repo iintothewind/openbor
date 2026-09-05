@@ -1,0 +1,16 @@
+apply plugin: 'com.android.application'
+android {
+    namespace "org.openbor.engine"
+    compileSdk 34
+    defaultConfig {
+        applicationId "org.openbor.engine"
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName "6392"
+        ndk { abiFilters project.findProperty('OABI') ?: 'arm64-v8a' }
+    }
+    buildTypes { debug { minifyEnabled false } }
+    lint { abortOnError false }
+    sourceSets.main { jniLibs.srcDir 'src/main/jniLibs' }
+}

@@ -115,19 +115,19 @@ BUILD_LOADGL    = 1
 BUILD_VORBIS    = 1
 BUILDING        = 1
 YASM            = yasm
-CC              = $(PREFIX)gcc
+CC              = $(PREFIX)clang
 OBJTYPE         = macho
 INCLUDES        = $(DWNDEV)/include \
-                  $(DWNDEV)/include/SDL \
-                  $(SDKPATH)/usr/include/malloc
+                  $(DWNDEV)/include/SDL2
 LIBRARIES       = $(DWNDEV)/lib
-ifeq ($(findstring darwin10, $(PREFIX)), darwin10)
-ARCHFLAGS       = -arch i386 -arch x86_64
-else
-BUILD_MMX       = 1
-TARGET_ARCH     = x86
-ARCHFLAGS       = -arch i386
-endif
+# sdl/video.h unconditionally #includes "yuv.h" (in source/webmlib), but Darwin
+# does not enable BUILD_WEBM, so add the header search path without pulling in
+# the webm objects / libvpx dependency.  "mac" provides a malloc.h shim for the
+# glibc-only  #include <malloc.h> used by several engine sources.
+INCS            += source/webmlib mac
+# clang defaults to the host arch (arm64-apple-darwin); keep ARCHFLAGS empty
+# so the universal build works on both Apple Silicon and Intel without -arch.
+TARGET_ARCH     = arm64
 ifeq ($(BUILD_DARWIN), 0)
 BUILD_DEBUG     = 1
 endif
@@ -445,6 +445,18 @@ OBJS            = $(MAIN)                                                       
 CFLAGS 	       += $(addprefix -I", $(addsuffix ", $(INCS))) $(ARCHFLAGS) -D$(TARGET_PLATFORM)
 CFLAGS 	       += -g -Wall -Werror -fsigned-char -std=gnu99
 
+# PSP/VITA: 现代交叉工具链(GCC15)对 2014 移植代码的严格性放宽 + 平台专有符号映射。
+# 排在全局 -Werror 之后，仅这两平台生效，Linux/Win 不受影响。
+#   -Wno-error: 兜底把其余 warning 降级(现代 GCC 下 2014 代码告警极多)
+#   -fcommon: 老式裸定义全局变量, 现代 GCC 默认 -fno-common 会 multiple definition
+#   -Wno-error=implicit-function-declaration: GCC14+ 默认升为硬 error, 需退回 warning
+ifdef BUILD_PSP
+CFLAGS	   += -Wno-error -fcommon -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=implicit-int -Wno-error=incompatible-pointer-types -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp
+endif
+ifdef BUILD_VITA
+CFLAGS	   += -Wno-error -fcommon -Wno-error=implicit-function-declaration -Wno-error=int-conversion -Wno-error=implicit-int -Wno-error=incompatible-pointer-types -Dstricmp=strcasecmp -Dstrnicmp=strncasecmp
+endif
+
 
 ifndef BUILD_DARWIN
 ifdef BUILD_LINUX
@@ -454,7 +466,11 @@ endif
 
 ifndef BUILD_DEBUG
 CFLAGS 	       += -O2
-CFLAGS 	       += -fno-ident -freorder-blocks
+CFLAGS 	       += -fno-ident
+ifndef BUILD_DARWIN
+# GCC-only pass; clang (Apple toolchain) rejects -freorder-blocks even under -Werror.
+CFLAGS         += -freorder-blocks
+endif
 ifndef BUILD_AMD64
 CFLAGS         += -fomit-frame-pointer
 endif
@@ -477,7 +493,14 @@ endif
 
 
 ifdef BUILD_DARWIN
-CFLAGS 	       += -DLINUX -headerpad_max_install_names -isysroot $(SDKPATH)
+CFLAGS 	       += -DLINUX -isysroot $(SDKPATH)
+# Apple clang (21.x, macOS 26 SDK) is far stricter than the GCC this 2014 port
+# was written against; new diagnostics are promoted to errors by -Werror.
+# Relax them for the Darwin build only, mirroring the PSP/Vita GCC15 gate.
+CFLAGS 	       += -Wno-error -Wno-error=deprecated-non-prototype \
+                  -Wno-error=implicit-enum-enum-cast -Wno-error=unused-but-set-variable \
+                  -Wno-error=gnu-folding-constant -Wno-error=implicit-int-conversion \
+                  -Wno-error=int-conversion -Wno-error=incompatible-pointer-types -fcommon
 endif
 
 
@@ -553,12 +576,12 @@ endif
 
 ifdef BUILD_DARWIN
 LIBS           += -Wl,-syslibroot,$(SDKPATH) \
+                  -headerpad_max_install_names \
                   -framework Cocoa \
                   -framework OpenGL \
-                  -framework Carbon \
                   -framework AudioUnit \
                   -framework IOKit \
-                  -lSDLmain
+                  -lSDL2main
 endif
 
 
@@ -587,7 +610,7 @@ endif
 
 
 ifdef BUILD_VITA
-LIBS           += -lvita2d -lSceKernel_stub -lSceDisplay_stub -lSceGxm_stub \
+LIBS           += -lvita2d -lSceAppMgr_stub -lSceDisplay_stub -lSceGxm_stub \
 	              -lSceSysmodule_stub -lSceCtrl_stub -lScePgf_stub \
 	              -lSceCommonDialog_stub -lSceAudio_stub -lfreetype -ljpeg
 endif

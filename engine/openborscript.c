@@ -14058,7 +14058,7 @@ HRESULT openbor_setidle(ScriptVariant **varlist , ScriptVariant **pretvar, int p
 {
     LONG anim = 0, resetable = 0, stalladd = 0;
     entity *e;
-    extern unsigned int _time;
+    extern u32 _time;
 
     *pretvar = NULL;
     if(paramCount < 1)

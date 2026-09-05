@@ -1,0 +1,55 @@
+# 归一化文本文件换行：存入仓库统一 LF，检出也强制 LF（跨平台一致）
+* text=auto eol=lf
+
+# 明确声明常见文本类型，确保按文本处理并强制 LF
+*.c       text eol=lf
+*.h       text eol=lf
+*.cpp     text eol=lf
+*.cc      text eol=lf
+*.hpp     text eol=lf
+*.S       text eol=lf
+*.s       text eol=lf
+*.asm     text eol=lf
+*.mk      text eol=lf
+Makefile  text eol=lf
+*.sh      text eol=lf
+*.py      text eol=lf
+*.txt     text eol=lf
+*.md      text eol=lf
+*.xml     text eol=lf
+*.gradle  text eol=lf
+*.properties text eol=lf
+*.java    text eol=lf
+*.in      text eol=lf
+*.ac      text eol=lf
+*.am      text eol=lf
+*.plist   text eol=lf
+.gitignore   text eol=lf
+.gitattributes text eol=lf
+
+# 二进制文件：禁止换行转换与文本 diff
+*.png     binary
+*.jpg     binary
+*.jpeg    binary
+*.gif     binary
+*.bmp     binary
+*.ico     binary
+*.gz      binary
+*.bz2     binary
+*.xz      binary
+*.zip     binary
+*.7z      binary
+*.tar     binary
+*.so      binary
+*.a       binary
+*.o       binary
+*.dll     binary
+*.exe     binary
+*.elf     binary
+*.apk     binary
+*.aar     binary
+*.wav     binary
+*.ogg     binary
+*.mp3     binary
+*.mp4     binary
+*.webm    binary
