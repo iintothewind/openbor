@@ -84,7 +84,14 @@ YASM 	        = yasm
 CC  	        = $(LNXDEV)/$(PREFIX)gcc
 OBJTYPE         = elf
 INCLUDES        = $(SDKPATH)/include
-ifeq ($(findstring 64, $(GCC_TARGET)), 64)
+ifeq ($(findstring aarch64, $(GCC_TARGET)), aarch64)
+# ARM64 (aarch64-linux-gnu).  "aarch64" contains the substring "64", so this
+# branch MUST be tested before the findstring-64 amd64 check below, otherwise
+# it is misdetected as amd64 and gets x86-only -m64 / yasm.  No MMX asm, no
+# -DAMD64; libraries live in the Debian multiarch dir $(SDKPATH)/lib/<triple>.
+TARGET_ARCH     = arm64
+LIBRARIES       = $(SDKPATH)/lib/$(GCC_TARGET)
+else ifeq ($(findstring 64, $(GCC_TARGET)), 64)
 TARGET_ARCH     = amd64
 BUILD_AMD64     = 1
 ARCHFLAGS       = -m64

@@ -1,4 +1,6 @@
-# OpenBOR 6392 构建指南（Windows / Linux / Android / PSP / Vita / macOS）
+# OpenBOR 6392 构建指南（Windows / Linux / arm64 / Android / PSP / Vita / macOS）
+
+> **懒人入口**：三个自建构建镜像已发布为 ghcr 公开包，可**直接 `docker pull` 复用、免从零 build**——坐标与拉取方式见 [第 8 节](#8-构建镜像发布到-ghcr免重复-build可直接拉取)。
 
 本文记录 OpenBOR `6392` 分支（基于 `v6391`）在多个平台上**可复现**的构建方法：依赖、步骤、以及实际踩过的坑与解法。所有命令均在 `Windows / Git-Bash` 环境实测通过。
 
@@ -85,6 +87,20 @@ bash scripts/docker-build.sh
 5. Git-Bash 里跑 docker 会把 `-w /src/...` 误转成 Windows 路径 → 前缀 `MSYS_NO_PATHCONV=1`。
 6. **`sdl/video.c: fatal error: SDL2_framerate.h`** → 镜像缺 `libsdl2-gfx-dev`（SDL2_gfx 的开发头，提供 `SDL2_framerate.h`）。Android 段不需要它（`sdl/video.c` 在 `#if ANDROID` 分支转 include `android/jni/openbor/video.c`，不走 SDL2_gfx）。
 7. **`soundmix.c: fatal error: vorbis/vorbisfile.h`** → 镜像缺 `libvorbis-dev`（`soundmix.c` 的 `#else` 分支用 `<vorbis/vorbisfile.h>`，链接还需 `-lvorbisfile -lvorbis -logg -lvpx`，一并补 `libogg-dev libvpx-dev`）。
+
+### 2.5 Linux arm64（aarch64，Docker + QEMU，宿主免交叉工具链）
+在第 2 节基础上产出真 `ELF aarch64`：用 `docker build/run --platform linux/arm64` 借 **QEMU(`qemu-aarch64`)** 模拟，在 arm64 容器内**原生编译**（容器内 `build-linux.sh` 与 amd64 完全一致），**复用同一份 `scripts/Dockerfile`**（依赖清单无硬编码架构，apt 自动命中 `:arm64` 包），无需交叉工具链与交叉版第三方库。
+```bash
+bash scripts/build-linux-arm64.sh [输出目录]   # 默认 $HOME/obor-linux-arm64-build
+```
+产物：`OpenBOR`（ELF 64-bit LSB pie executable, ARM aarch64，约 1.35 MB）。脚本会自建 `obor-build-arm64:6392` 镜像、按需注册 `qemu-aarch64` binfmt（`tonistiigi/binfmt --install arm64`，幂等），编完把产物抽到输出目录并清源码树残留，**不入库**。
+
+**踩坑（本轮端到端实测暴露）：**
+1. **`gcc: error: unrecognized command-line option '-m64'`**（编译第一个 `.c` 即挂）：根因 `engine/Makefile` 的 Linux 段用 `findstring 64, $(GCC_TARGET)` 判架构，而 aarch64 容器的 `gcc -dumpmachine` = `aarch64-linux-gnu` 恰好含子串 `64`，被误判成 amd64，塞进 x86 专有的 `-m64`（及 yasm `-m amd64`、`-DAMD64`）。**修复**：在该判断**之前**先测 `findstring aarch64`，命中则 `TARGET_ARCH=arm64`、不设 `ARCHFLAGS`/`BUILD_MMX`/`-DAMD64`，库走 Debian multiarch `$(SDKPATH)/lib/aarch64-linux-gnu`。已门控入库，amd64 / x86 / Win 分支零影响。
+2. **Git-Bash 的 Windows `tar` 在「管道 + `**` glob」下漏拷 `scripts/`**（曾试先复制 temp 副本再编以隔离，结果容器内 `scripts/build-linux.sh: No such file`）→ 改回与 `docker-build.sh` 一致的「挂载真实仓库、原地编译」，靠 `build-linux.sh` 的 `trap` 还原 Makefile；脚本自身只把产物抽到输出目录并 `rm` 源码树里的 `OpenBOR`/`OpenBOR.elf`。
+3. QEMU 模拟执行比原生慢数倍，arm64 镜像 apt + 整轮编译约数分钟，属正常。
+
+**验证**：宿主机 `od -An -tu1 -N20 OpenBOR` 读 ELF header：magic `\x7fELF`、`EI_CLASS=2`(64-bit)、`e_type=3`(ET_DYN/PIE)、`e_machine=183 0`=`0xB7`=`EM_AARCH64`（对比 x86-64=62、i386=3）。
 
 ---
 
@@ -322,9 +338,89 @@ bash scripts/build-mac.sh [输出目录]     # 自动 brew 安装依赖，temp �
 |---|---|---|---|
 | Windows | **Docker 交叉** `i686-w64-mingw32-gcc`（GCC 12）+ win-sdk 库 | **是** | `engine/OpenBOR.exe` (PE32 32) |
 | Linux | Docker GCC 12 | **是** | `engine/OpenBOR` (ELF64) |
+| Linux arm64 | **Docker `--platform linux/arm64` + QEMU** 原生编（复用同 Dockerfile，无交叉工具链） | **是** | `OpenBOR` (ELF aarch64) |
 | Android | **Docker 自包含镜像**（`obor-android:6392`，含 NDK r26d + Gradle 8.7 + AGP 8.6 + SDL2 2.33）；或原生自备工具链 | **是** | `app-debug.apk` (arm64) |
 | PSP | **官方镜像** `pspdev/pspdev:latest`（`psp-gcc` GCC 15） | **是**（且更多，GCC15 硬 error） | `EBOOT.PBP` (PRX 打包) |
 | Vita | **官方镜像** `vitasdk/vitasdk:latest`（`arm-vita-eabi-gcc` GCC 15） | **是**（且更多，GCC15 硬 error） | `OpenBOR.vpk` |
 | macOS | **真机** Apple clang 21 + Homebrew SDL2（arm64，无法 Docker 交叉） | **是**（Apple clang 比 GCC15 更严） | `OpenBOR.app` (Mach-O arm64) |
 
 > Linux + Windows 均由 `bash scripts/docker-build.sh` 一条命令在同一容器内产出；Android 推荐 `bash scripts/android/docker-build.sh`（自包含镜像，宿主仅需 Docker），原生路线则手动跑 `scripts/android/01→04`；**PSP + Vita** 由 `bash scripts/docker-build-pspvita.sh` 一条命令产出（官方工具链镜像，产物落仓库外 temp）；**macOS** 由 `bash scripts/build-mac.sh` 在真实 Apple Silicon Mac 上产出 `.app`（无法进 Docker）。
+
+---
+
+## 8. 构建镜像发布到 ghcr（免重复 build，可直接拉取）
+
+三个**自建**构建镜像已发布为 GitHub Container Registry（ghcr.io）上的**公开包**，任何人可匿名拉取，免去每次本地从零 `docker build`（尤其 Android 镜像 5.22 GB，首次 build 联网烘 NDK/SDK/Gradle 很慢）。
+
+### 8.1 镜像坐标与 digest
+
+| 本地镜像名（脚本期望） | ghcr 公开坐标 | digest | 体积 | 用途 |
+|---|---|---|---|---|
+| `obor-build:6392` | `ghcr.io/iintothewind/openbor-build:6392` | `sha256:5b643eb09acb…` | 1.68 GB | Linux amd64 + Win 交叉 |
+| `obor-build-arm64:6392` | `ghcr.io/iintothewind/openbor-build-arm64:6392` | `sha256:31e93edf2404…` | 1.67 GB | Linux arm64（QEMU 原生编） |
+| `obor-android:6392` | `ghcr.io/iintothewind/openbor-android:6392` | `sha256:b11bae08da0b…` | 5.22 GB | Android（NDK+SDK+Gradle+三方源码） |
+
+> PSP/Vita 用**官方公共镜像**（`pspdev/pspdev:latest`、`vitasdk/vitasdk:latest`）、macOS **无法进 Docker**，均不发布、直接按第 4/5 节用官方镜像或真机。
+
+### 8.2 拉取并复用（推荐，零改脚本）
+脚本内部用的是**本地镜像名**（`obor-build:6392` 等）。拉下来后 `docker tag` 回本地名即可复用，脚本里的 `docker build` 会命中已有层、秒过：
+```bash
+docker pull ghcr.io/iintothewind/openbor-build:6392
+docker tag  ghcr.io/iintothewind/openbor-build:6392  obor-build:6392
+
+docker pull ghcr.io/iintothewind/openbor-build-arm64:6392
+docker tag  ghcr.io/iintothewind/openbor-build-arm64:6392  obor-build-arm64:6392
+
+docker pull ghcr.io/iintothewind/openbor-android:6392
+docker tag  ghcr.io/iintothewind/openbor-android:6392  obor-android:6392
+```
+之后照常跑 `scripts/docker-build.sh` / `scripts/build-linux-arm64.sh` / `scripts/android/docker-build.sh` 即可。
+
+> 若只想手动进容器编一次（不跑脚本）：
+> ```bash
+> # Linux amd64 + Win（同一容器）
+> MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/src -w /src obor-build:6392 \
+>   bash -c "bash scripts/build-linux.sh && bash scripts/build-win-docker.sh"
+> # Linux arm64（需 --platform + qemu-aarch64 binfmt）
+> MSYS_NO_PATHCONV=1 docker run --rm --platform linux/arm64 -v "$PWD":/src -w /src obor-build-arm64:6392 \
+>   bash scripts/build-linux.sh
+> ```
+
+### 8.3 发布/推送流程（维护者，需重新构建或更新版本时）
+```bash
+NS=ghcr.io/iintothewind
+# 1) 重新 tag（前缀 openbor-）
+docker tag obor-build:6392         $NS/openbor-build:6392
+docker tag obor-build-arm64:6392   $NS/openbor-build-arm64:6392
+docker tag obor-android:6392       $NS/openbor-android:6392
+# 2) 登录 ghcr（见 8.4 身份要求）
+printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u iintothewind --password-stdin
+# 3) 推送
+docker push $NS/openbor-build:6392
+docker push $NS/openbor-build-arm64:6392
+docker push $NS/openbor-android:6392
+```
+
+### 8.4 身份与可见性（实测踩坑，务必照此）
+- **推送 namespace 必须是 `iintothewind` 本人签发、带 `write:packages` 的 token**。ghcr 在 `ghcr.io/iintothewind/...` 建包，只认该 namespace 的写权；用别的账号（如协作者 `ivar-acrgo`）的 token 会 `permission_denied: create_package`。
+- **token 类型**：用 **classic PAT 且同时勾 `write:packages` + `repo`** 最稳。`ghp_…` 只勾了部分 scope、或 fine-grained PAT（`github_pat_…`）未授 Packages 写权时，push 报 `permission_denied: The token provided does not match expected scopes`（身份对、scope 不够）。
+- **可见性只能网页手动设 public**：user-namespace 包无对应 API——REST `PATCH /users/<u>/packages/container/<pkg>/visibility` 返回 `404`，GraphQL `updatePackage` 已从 schema 移除。到各包 settings 的 Danger Zone → Change visibility → Public：
+  ```
+  https://github.com/users/iintothewind/packages/container/openbor-build/settings
+  https://github.com/users/iintothewind/packages/container/openbor-build-arm64/settings
+  https://github.com/users/iintothewind/packages/container/openbor-android/settings
+  ```
+- **验证 public**（不带任何本地凭证的匿名 token 交换）：
+  ```bash
+  for p in openbor-build openbor-build-arm64 openbor-android; do
+    tok=$(curl -s "https://ghcr.io/token?scope=repository:iintothewind/$p:pull" \
+          | python -c "import sys,json;print(json.load(sys.stdin)['token'])")
+    curl -s -o /dev/null -w "$p: HTTP %{http_code}\n" \
+      -H "Authorization: Bearer $tok" \
+      -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
+      "https://ghcr.io/v2/iintothewind/$p/manifests/6392"
+  done   # 三包均应 HTTP 200 => 可匿名拉
+  ```
+
+### 8.5 安全提醒
+推送用的高权限 PAT（尤其 classic full PAT）属敏感凭证，发布完成后应尽快 **revoke**；日常复用只需匿名 `docker pull`，无需任何凭证。

@@ -7,6 +7,8 @@
 - 在 **Git-Bash（Windows）** 或 **Linux shell** 下运行；Windows 装 Android 依赖需额外备 **MSYS2**（编 libvpx 用 host gcc + POSIX make）。
 - 目标 ABI 由 `OBOR_ABI` 控制，默认 `arm64-v8a`。
 
+> **免重复 build**：三个自建构建镜像（`obor-build` / `obor-build-arm64` / `obor-android`）已发布为 ghcr 公开包，可直接 `docker pull` + `docker tag` 回本地名复用，脚本里的 `docker build` 即秒过。坐标与拉取/发布/踩坑见 [`../docs/BUILD.md` 第 8 节](../docs/BUILD.md)。
+
 ## Windows + Linux（Docker 一条命令）
 两条都在同一容器内产出，宿主免装工具链（仅需 Docker）：
 ```bash
@@ -30,6 +32,15 @@ bash scripts/build-win.sh [已解压的 win-sdk 目录]
 bash scripts/build-linux.sh          # 自动临时放宽 -Werror + -fcommon，编完还原
 ```
 产物：`engine/OpenBOR`（纯 Docker 见上一节 `docker-build.sh`）
+
+## Linux arm64（aarch64，Docker + QEMU）
+在 x86-64 宿主上产出真 `ELF aarch64`：Docker `--platform linux/arm64` 借 QEMU(`qemu-aarch64`) 模拟，在 arm64 容器内**原生编译**（复用现有 `Dockerfile`，apt 命中 `:arm64` 包，无需交叉工具链/交叉库）。宿主仅需 Docker：
+```bash
+bash scripts/build-linux-arm64.sh [输出目录]   # 默认 $HOME/obor-linux-arm64-build
+```
+产物：`<输出目录>/OpenBOR`（`ELF 64-bit LSB pie executable, ARM aarch64`），落仓库外，**不入库**。
+- `Makefile` 的 Linux 段已加 **aarch64 优先门控**（`aarch64-linux-gnu` 含子串 `64`，会被原 `findstring 64` 误判成 amd64 塞 x86 专有 `-m64`/yasm）。arm64 分支不设 `-m64`/`-DAMD64`/MMX，库走 Debian multiarch `$(SDKPATH)/lib/aarch64-linux-gnu`。见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 2 节。
+- 脚本会自动注册 `qemu-aarch64` binfmt（幂等）。QEMU 模拟执行较慢，请耐心。
 
 ## Android（Docker 自包含镜像，推荐 / 最省心）
 镜像 `obor-android:6392` 已烘齐 JDK17 + Android SDK(platform-34/build-tools34) + NDK r26d + Gradle 8.7 + 第三方源码，宿主仅需 Docker，**无需本地装 NDK/SDK/Gradle/MSYS2**：
@@ -92,7 +103,7 @@ bash scripts/build-mac.sh [输出目录]   # 自动 brew 装依赖，temp 副本
 ## 目录结构
 ```
 scripts/
-  build-win.sh  build-win-docker.sh  build-linux.sh  docker-build.sh  Dockerfile  README.md
+  build-win.sh  build-win-docker.sh  build-linux.sh  build-linux-arm64.sh  docker-build.sh  Dockerfile  README.md
   build-psp.sh  build-vita.sh  docker-build-pspvita.sh   # PSP/Vita（官方工具链镜像）
   build-mac.sh                                          # macOS（须在真实 Apple Silicon Mac 上跑）
   android/
