@@ -1,0 +1,200 @@
+name: Release builds
+
+# 发布一个 GitHub Release 时，自动构建并上传 7 个平台产物到该 Release：
+#   linux-x64, linux-arm64, win-x64, win-x86, psp, psv(vita), macos-arm64
+# 也可 workflow_dispatch 手动触发（仅产 artifacts，需配合一个 Release 才上传）。
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+
+permissions:
+  contents: write   # 上传 Release 资产
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Linux x64 + Windows x86：复用已发布的自建镜像 ghcr.io/iintothewind/openbor-build
+  # 该镜像 = scripts/Dockerfile（Debian bookworm + GCC12 + i686-mingw + 全部依赖）。
+  # 挂载真实仓库原地编译；build-linux.sh / build-win-docker.sh 的 trap 会还原临时补丁。
+  # ---------------------------------------------------------------------------
+  linux-x64-win-x86:
+    name: Linux x64 + Windows x86
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull build image
+        run: |
+          docker pull ghcr.io/iintothewind/openbor-build:6392
+          docker tag  ghcr.io/iintothewind/openbor-build:6392 obor-build:6392
+      - name: Build Linux x64
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
+            bash scripts/build-linux.sh
+          cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-x86_64"
+      - name: Build Windows x86 (i686, 32-bit)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
+            bash scripts/build-win-docker.sh
+          cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x86.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-linux-x86_64
+          path: ${{ runner.temp }}/OpenBOR-linux-x86_64
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-windows-x86
+          path: ${{ runner.temp }}/OpenBOR-windows-x86.exe
+
+  # ---------------------------------------------------------------------------
+  # Linux arm64：同 Dockerfile，--platform linux/arm64 + QEMU 模拟原生编译。
+  # 镜像 = ghcr.io/iintothewind/openbor-build-arm64（已交叉 arm64 依赖）。
+  # ---------------------------------------------------------------------------
+  linux-arm64:
+    name: Linux arm64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-qemu-action@v3
+      - name: Pull arm64 build image
+        run: |
+          docker pull ghcr.io/iintothewind/openbor-build-arm64:6392
+          docker tag  ghcr.io/iintothewind/openbor-build-arm64:6392 obor-build-arm64:6392
+      - name: Build (QEMU emulated, slow)
+        run: |
+          docker run --rm --platform linux/arm64 \
+            -v "$GITHUB_WORKSPACE":/src -w /src obor-build-arm64:6392 \
+            bash scripts/build-linux.sh
+          cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-aarch64"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-linux-aarch64
+          path: ${{ runner.temp }}/OpenBOR-linux-aarch64
+
+  # ---------------------------------------------------------------------------
+  # Windows x64：容器内现场交叉编译全套 64 位第三方库（自带 win-sdk 只有 32 位），
+  # 再交叉链出 PE32+ OpenBOR.exe。见 scripts/build-win64-docker.sh。
+  # ---------------------------------------------------------------------------
+  win-x64:
+    name: Windows x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Windows x64 (cross)
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src debian:bookworm-slim bash -c '
+            set -e
+            export DEBIAN_FRONTEND=noninteractive
+            apt-get update
+            apt-get install -y --no-install-recommends \
+              gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
+              autoconf automake libtool nasm yasm pkg-config \
+              make perl git curl ca-certificates file zlib1g-dev
+            bash scripts/build-win64-docker.sh
+          '
+          cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x64.exe"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-windows-x64
+          path: ${{ runner.temp }}/OpenBOR-windows-x64.exe
+
+  # ---------------------------------------------------------------------------
+  # PSP：官方 pspdev 镜像交叉 → EBOOT.PBP
+  # ---------------------------------------------------------------------------
+  psp:
+    name: PSP
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build PSP
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -v "$RUNNER_TEMP":/out pspdev/pspdev:latest bash -c '
+            set -e
+            export PATH=/usr/local/pspdev/bin:$PATH
+            export PSPSDK="$(psp-config --pspsdk-path)"
+            cp -a /src /work && cd /work/engine
+            find . -name "*.o" -delete
+            make BUILD_PSP=1 PSPSDK="$PSPSDK"
+            cp -f EBOOT.PBP /out/EBOOT.PBP
+          '
+          cp "$RUNNER_TEMP/EBOOT.PBP" "$RUNNER_TEMP/OpenBOR-psp-EBOOT.PBP"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-psp
+          path: ${{ runner.temp }}/OpenBOR-psp-EBOOT.PBP
+
+  # ---------------------------------------------------------------------------
+  # Vita(PSV)：官方 vitasdk 镜像交叉 → OpenBOR.vpk
+  # ---------------------------------------------------------------------------
+  vita:
+    name: Vita (PSV)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build Vita
+        run: |
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -v "$RUNNER_TEMP":/out vitasdk/vitasdk:latest bash -c '
+            set -e
+            export PATH=/usr/local/vitasdk/bin:$PATH
+            cp -a /src /work && cd /work/engine
+            find . -name "*.o" -delete
+            make BUILD_VITA=1
+            cp -f OpenBOR.vpk /out/OpenBOR.vpk
+          '
+          cp "$RUNNER_TEMP/OpenBOR.vpk" "$RUNNER_TEMP/OpenBOR-vita.vpk"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-vita
+          path: ${{ runner.temp }}/OpenBOR-vita.vpk
+
+  # ---------------------------------------------------------------------------
+  # macOS arm64：无法交叉/Docker，需真实 Apple Silicon runner（macos-14）。
+  # build-mac.sh 用 Homebrew 依赖在仓库外 temp 编出 .app 并 adhoc 签名。
+  # ---------------------------------------------------------------------------
+  macos-arm64:
+    name: macOS arm64
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build macOS app
+        run: |
+          bash scripts/build-mac.sh "$RUNNER_TEMP/macout"
+          ditto -c -k --sequesterRsrc "$RUNNER_TEMP/macout/OpenBOR.app" \
+            "$RUNNER_TEMP/OpenBOR-macos-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-macos-arm64
+          path: ${{ runner.temp }}/OpenBOR-macos-arm64.zip
+
+  # ---------------------------------------------------------------------------
+  # 汇总：等全部平台产物就绪，下载合并，附 SHA256SUMS，上传到刚发布的 Release。
+  # ---------------------------------------------------------------------------
+  release:
+    name: Publish to Release
+    runs-on: ubuntu-latest
+    needs: [linux-x64-win-x86, linux-arm64, win-x64, psp, vita, macos-arm64]
+    if: github.event_name == 'release'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Flatten + checksums
+        run: |
+          mkdir -p out
+          # 各 job 的产物在 dist/<artifact-name>/<file>；merge-multiple 后落到 dist/<file>
+          find dist -maxdepth 2 -type f \( -name 'OpenBOR-*' -o -name 'EBOOT.PBP' \) -exec cp {} out/ \;
+          ( cd out && sha256sum OpenBOR-* > SHA256SUMS.txt )
+          ls -la out
+      - name: Upload to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            out/OpenBOR-linux-x86_64
+            out/OpenBOR-linux-aarch64
+            out/OpenBOR-windows-x86.exe
+            out/OpenBOR-windows-x64.exe
+            out/OpenBOR-psp-EBOOT.PBP
+            out/OpenBOR-vita.vpk
+            out/OpenBOR-macos-arm64.zip
+            out/SHA256SUMS.txt
+          fail_on_unmatched_files: true

@@ -40,9 +40,23 @@ ifdef BUILD_WIN
 TARGET          = $(VERSION_NAME).elf
 TARGET_FINAL    = $(VERSION_NAME).exe
 TARGET_PLATFORM = WIN
-TARGET_ARCH     = x86
 TARGET_RESOURCE = resources/$(VERSION_NAME).res
 OBJTYPE         = win32
+# Cross-arch selection for the Windows port.  win32 (i686) stays the default and
+# is byte-for-byte the previous behaviour; only an x86_64-w64-mingw32 GCC_TARGET
+# (set by scripts/build-win64-docker.sh) selects the 64-bit branch: amd64 PE32+,
+# -m64, no MMX/yasm asm (which is x86-32-only here), matching the Linux amd64
+# branch.  The native win-sdk build leaves GCC_TARGET unset and keeps x86.
+ifeq ($(findstring x86_64, $(GCC_TARGET)), x86_64)
+TARGET_ARCH     = amd64
+BUILD_AMD64     = 1
+ARCHFLAGS       = -m64
+CFLAGS          += -DAMD64
+else
+TARGET_ARCH     = x86
+ARCHFLAGS       = -m32
+BUILD_MMX       = 1
+endif
 BUILD_SDL       = 1
 BUILD_GFX       = 1
 BUILD_STATIC    = 1
@@ -57,10 +71,6 @@ CC              = $(WINDEV)/$(PREFIX)gcc$(EXTENSION)
 INCLUDES        = $(SDKPATH)/include \
                   $(SDKPATH)/include/SDL2
 LIBRARIES       = $(SDKPATH)/lib
-ARCHFLAGS       = -m32
-ifeq ($(findstring 86, $(TARGET_ARCH)), 86)
-BUILD_MMX       = 1
-endif
 ifeq ($(BUILD_WIN), 0)
 BUILD_DEBUG     = 1
 endif
