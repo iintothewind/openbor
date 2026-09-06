@@ -21,9 +21,6 @@ void drawbox(int x, int y, int width, int height, int colour, s_screen *screen, 
 // Pretty slow circle function
 void circle(int x, int y, int radius, int colour, s_screen *screen, int alpha);
 
-// Always handy
-void _putpixel(int x, int y, int colour, s_screen *screen, int alpha);
-
 
 ///////////////////////////////////////
 ///////   16/32bit version ...........

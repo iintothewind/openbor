@@ -266,11 +266,11 @@ void drawbox(int x, int y, int width, int height, int colour, s_screen *screen, 
 
 
 // Putpixel used by circle function
-void _putpixel(int x, int y, int colour, s_screen *screen, int alpha)
+static void _putpixel(int x, int y, int colour, s_screen *screen, int alpha)
 {
     int pixind;
     unsigned char *lut;
-    if((unsigned)x > screen->width || (unsigned)y > screen->height)
+    if((unsigned)x >= (unsigned)screen->width || (unsigned)y >= (unsigned)screen->height)
     {
         return;
     }

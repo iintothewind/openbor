@@ -129,8 +129,12 @@ HRESULT math_acos(ScriptVariant **varlist , ScriptVariant **pretvar, int paramCo
     {
         double PI = 3.14159265;
 
+        // Clamp for safety: acos domain is [-1, 1]
+        if (dbltemp > 1.0) { dbltemp = 1.0; }
+        if (dbltemp < -1.0) { dbltemp = -1.0; }
+
         ScriptVariant_ChangeType(*pretvar, VT_DECIMAL);
-        (*pretvar)->dblVal = (DOUBLE)(aacos((double)dbltemp) * 180.0 / PI);
+        (*pretvar)->dblVal = (DOUBLE)(acos((double)dbltemp) * 180.0 / PI);
         return S_OK;
     }
     *pretvar = NULL;
@@ -146,7 +150,7 @@ HRESULT math_atan(ScriptVariant **varlist , ScriptVariant **pretvar, int paramCo
         double PI = 3.14159265;
 
         ScriptVariant_ChangeType(*pretvar, VT_DECIMAL);
-        (*pretvar)->dblVal = (DOUBLE)(aatan((double)dbltemp) * 180.0 / PI);
+        (*pretvar)->dblVal = (DOUBLE)(atan((double)dbltemp) * 180.0 / PI);
         return S_OK;
     }
     *pretvar = NULL;
