@@ -1,7 +1,7 @@
 name: Release builds
 
 # 发布一个 GitHub Release 时，自动构建并上传 7 个平台产物到该 Release：
-#   linux-x64, linux-arm64, win-x64, win-x86, psp, psv(vita), macos-arm64
+#   linux-x64, linux-arm64, win-x64, win-x32, psp, psv(vita), macos-arm64
 # 也可 workflow_dispatch 手动触发（仅产 artifacts，需配合一个 Release 才上传）。
 on:
   release:
@@ -13,12 +13,36 @@ permissions:
 
 jobs:
   # ---------------------------------------------------------------------------
-  # Linux x64 + Windows x86：复用已发布的自建镜像 ghcr.io/iintothewind/openbor-build
-  # 该镜像 = scripts/Dockerfile（Debian bookworm + GCC12 + i686-mingw + 全部依赖）。
-  # 挂载真实仓库原地编译；build-linux.sh / build-win-docker.sh 的 trap 会还原临时补丁。
+  # Linux x64：GitHub Actions 的 ubuntu-latest 原生就是 x86_64 Linux，直接在其上
+  # 装依赖 + 原生编译，无需容器/QEMU（效率最高）。build-linux.sh 的 trap 会还原临时补丁。
   # ---------------------------------------------------------------------------
-  linux-x64-win-x86:
-    name: Linux x64 + Windows x86
+  linux-x64:
+    name: Linux x64
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config yasm git \
+            libsdl2-dev libsdl2-gfx-dev libpng-dev zlib1g-dev \
+            libvorbis-dev libogg-dev libvpx-dev
+      - name: Build Linux x64 (native)
+        run: |
+          bash scripts/build-linux.sh
+          cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-x86_64"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-linux-x86_64
+          path: ${{ runner.temp }}/OpenBOR-linux-x86_64
+
+  # ---------------------------------------------------------------------------
+  # Windows x32 (i686, 32-bit)：用已发布的自建镜像 ghcr.io/iintothewind/openbor-build
+  # （含 i686-w64-mingw32 交叉链 + win-sdk 第三方库）。独立 job，与 linux-x64 解耦。
+  # ---------------------------------------------------------------------------
+  win-x32:
+    name: Windows x32
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -26,24 +50,15 @@ jobs:
         run: |
           docker pull ghcr.io/iintothewind/openbor-build:6392
           docker tag  ghcr.io/iintothewind/openbor-build:6392 obor-build:6392
-      - name: Build Linux x64
-        run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
-            bash -c 'git config --global --add safe.directory /src && bash scripts/build-linux.sh'
-          cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-x86_64"
-      - name: Build Windows x86 (i686, 32-bit)
+      - name: Build Windows x32 (i686, 32-bit)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
             bash -c 'git config --global --add safe.directory /src && bash scripts/build-win-docker.sh'
-          cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x86.exe"
+          cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x32.exe"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenBOR-linux-x86_64
-          path: ${{ runner.temp }}/OpenBOR-linux-x86_64
-      - uses: actions/upload-artifact@v4
-        with:
-          name: OpenBOR-windows-x86
-          path: ${{ runner.temp }}/OpenBOR-windows-x86.exe
+          name: OpenBOR-windows-x32
+          path: ${{ runner.temp }}/OpenBOR-windows-x32.exe
 
   # ---------------------------------------------------------------------------
   # Linux arm64：同 Dockerfile，--platform linux/arm64 + QEMU 模拟原生编译。
@@ -172,7 +187,7 @@ jobs:
   release:
     name: Publish to Release
     runs-on: ubuntu-latest
-    needs: [linux-x64-win-x86, linux-arm64, win-x64, psp, vita, macos-arm64]
+    needs: [linux-x64, win-x32, linux-arm64, win-x64, psp, vita, macos-arm64]
     if: github.event_name == 'release'
     steps:
       - uses: actions/download-artifact@v4
@@ -192,7 +207,7 @@ jobs:
           files: |
             out/OpenBOR-linux-x86_64
             out/OpenBOR-linux-aarch64
-            out/OpenBOR-windows-x86.exe
+            out/OpenBOR-windows-x32.exe
             out/OpenBOR-windows-x64.exe
             out/OpenBOR-psp-EBOOT.PBP
             out/OpenBOR-vita.vpk

@@ -659,9 +659,13 @@ LIBS           += -lpng -lz -lm
 # win-sdk build never needed: -lsetupapi (SDL2 2.30 hidapi in libSDL2) and
 # -lwinpthread (winpthreads for libvpx threading).  These satisfy symbols from
 # libs placed earlier in LIBS, so they must come last (left-to-right link).
-# The 32-bit i686 path (GCC_TARGET=i686-w64-mingw32) is unaffected.
+# Gated on BUILD_WIN *and* x86_64 GCC_TARGET: the native Linux x64 build also
+# has "x86_64" in gcc -dumpmachine (x86_64-linux-gnu) and must NOT pull these
+# Windows-only libs.  The 32-bit i686 path is likewise unaffected.
+ifdef BUILD_WIN
 ifeq ($(findstring x86_64, $(GCC_TARGET)), x86_64)
 LIBS           += -lsetupapi -lwinpthread
+endif
 endif
 
 #----------------------------------------------------------------------------------------------------
