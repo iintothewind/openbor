@@ -2191,7 +2191,8 @@ void execute_spawn_script(s_spawn_entry *p, entity *e)
             tempvar.dblVal = (DOUBLE)p->position.z;
             Script_Set_Local_Variant(cs, "spawnz", &tempvar);
             tempvar.dblVal = (DOUBLE)p->position.y;
-            Script_Set_Local_Variant(cs, "spawna", &tempvar);
+            Script_Set_Local_Variant(cs, "spawna", &tempvar); // Legacy alias for spawny.
+            Script_Set_Local_Variant(cs, "spawny", &tempvar);
             ScriptVariant_ChangeType(&tempvar, VT_INTEGER);
             tempvar.lVal = (LONG)p->at;
             Script_Set_Local_Variant(cs, "spawnat", &tempvar);
@@ -2204,6 +2205,7 @@ void execute_spawn_script(s_spawn_entry *p, entity *e)
             Script_Set_Local_Variant(cs, "spawnx", &tempvar);
             Script_Set_Local_Variant(cs, "spawnz", &tempvar);
             Script_Set_Local_Variant(cs, "spawna", &tempvar);
+            Script_Set_Local_Variant(cs, "spawny", &tempvar);
             Script_Set_Local_Variant(cs, "spawnat", &tempvar);
         }
     }
@@ -25995,13 +25997,13 @@ int common_trymove(float xdir, float zdir)
         {
             xdir = 0;
             if ( self->falling && (self->modeldata.hitwalltype < 0 || (self->modeldata.hitwalltype >= 0 && level->walls[wall].type == self->modeldata.hitwalltype)) ) hit |= 1;
-            execute_onblockw_script(self, &level->walls[wall], PLANE_X, wall);
+            execute_onblockw_script(self, &level->walls[wall], wall, PLANE_X);
         }
         if(zdir && (wall = checkwall_below(self->position.x, z, T_MAX_CHECK_ALTITUDE)) >= 0 && level->walls[wall].height > self->position.y)
         {
             zdir = 0;
             if ( self->falling && (self->modeldata.hitwalltype < 0 || (self->modeldata.hitwalltype >= 0 && level->walls[wall].type == self->modeldata.hitwalltype)) ) hit |= 1;
-            execute_onblockw_script(self, &level->walls[wall], PLANE_Z, wall);
+            execute_onblockw_script(self, &level->walls[wall], wall, PLANE_Z);
         }
 
         if ( hit && !self->hitwall && validanim(self, ANI_HITWALL) ) ent_set_anim(self, ANI_HITWALL, 0);
@@ -32385,7 +32387,7 @@ void spawnplayer(int index)
     //////////////////checking holes/ walls///////////////////////////////////
     for(xc = 0; xc < videomodes.hRes / 4; xc++)
     {
-        if(p.position.x > videomodes.hRes)
+        if(p.position.x >= videomodes.hRes)
         {
             p.position.x -= videomodes.hRes;
         }

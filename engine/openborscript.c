@@ -15001,7 +15001,7 @@ HRESULT openbor_getgfxproperty(ScriptVariant **varlist , ScriptVariant **pretvar
         {
         case bitmap_magic: //As long as the two structures are identical...
         case screen_magic:
-            if(x < 0 || x >= screen->width || y < 0 || y >= screen->height)
+            if((unsigned)x >= (unsigned)screen->width || (unsigned)y >= (unsigned)screen->height) // includes checks for <0
             {
                 v = 0;
             }
@@ -15025,7 +15025,7 @@ HRESULT openbor_getgfxproperty(ScriptVariant **varlist , ScriptVariant **pretvar
             }
             break;
         case sprite_magic:
-            if(x < 0 || x >= sprite->width || y < 0 || y >= sprite->height)
+            if((unsigned)x >= (unsigned)sprite->width || (unsigned)y >= (unsigned)sprite->height) // includes checks for <0
             {
                 v = 0;
             }
