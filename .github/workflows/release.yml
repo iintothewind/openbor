@@ -143,7 +143,7 @@ jobs:
   # Vita(PSV)：官方 vitasdk 镜像交叉 → OpenBOR.vpk
   # ---------------------------------------------------------------------------
   vita:
-    name: Vita (PSV)
+    name: PSV
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -157,11 +157,11 @@ jobs:
             make BUILD_VITA=1
             cp -f OpenBOR.vpk /out/OpenBOR.vpk
           '
-          cp "$RUNNER_TEMP/OpenBOR.vpk" "$RUNNER_TEMP/OpenBOR-vita.vpk"
+          cp "$RUNNER_TEMP/OpenBOR.vpk" "$RUNNER_TEMP/OpenBOR-psv.vpk"
       - uses: actions/upload-artifact@v4
         with:
-          name: OpenBOR-vita
-          path: ${{ runner.temp }}/OpenBOR-vita.vpk
+          name: OpenBOR-psv
+          path: ${{ runner.temp }}/OpenBOR-psv.vpk
 
   # ---------------------------------------------------------------------------
   # macOS arm64：无法交叉/Docker，需真实 Apple Silicon runner（macos-14）。
@@ -255,7 +255,7 @@ jobs:
             out/OpenBOR-windows-x32.exe
             out/OpenBOR-android-arm64-v8a.apk
             out/OpenBOR-psp-EBOOT.PBP
-            out/OpenBOR-vita.vpk
+            out/OpenBOR-psv.vpk
             out/OpenBOR-macos-arm64.zip
             out/SHA256SUMS.txt
           fail_on_unmatched_files: true
