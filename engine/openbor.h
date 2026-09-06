@@ -82,6 +82,7 @@
 #define		MAX_ATTACKS			4					// Total number of attacks players have
 #define     MAX_FOLLOWS         4					// For followup animations
 #define     MAX_COLLISIONS      2                   // Collision boxes.
+#define     MAX_ATTACK_IDS      8                   // Number of incoming attack ID's kept per entity to stop a single collision resolving on every update (the "multihit glitch"). Upstream v4.0 uses 4; raised here because this engine clears attack_id_outgoing at several points, which hands the same attack fresh ID's and drains the window faster.
 #define		MAX_ARG_LEN			512
 #define		MAX_ALLOWSELECT_LEN	1024
 #define		MAX_SELECT_LOADS   	512
@@ -2426,7 +2427,7 @@ typedef struct entity
     void (*takeaction)();
     int (*takedamage)(struct entity *, s_collision_attack *, int);
     int (*trymove)(float, float);
-    unsigned int attack_id_incoming;
+    unsigned int attack_id_incoming[MAX_ATTACK_IDS];  // Ring of recently received attack ID's; element 0 is the most recent.
     unsigned int attack_id_outgoing;
     int hitwall; // == 1 in the instant that hit the wall/platform/obstacle, else == 0
     unsigned char *colourmap;
@@ -2768,6 +2769,8 @@ void    execute_onmovez_script      (entity *ent);
 void    execute_onmovea_script      (entity *ent);
 void    execute_didblock_script     (entity *ent, entity *other, s_collision_attack *attack);
 void    execute_ondoattack_script   (entity *ent, entity *other, s_collision_attack *attack, e_exchange which, int attack_id);
+void    attack_update_id            (entity *ent, unsigned int attack_id);
+int     attack_id_check_match       (entity *ent, s_collision_attack *attack, unsigned int attack_id);
 void    execute_updateentity_script (entity *ent);
 void    execute_think_script        (entity *ent);
 void    execute_didhit_script       (entity *ent, entity *other, s_collision_attack *attack, int blocked);
