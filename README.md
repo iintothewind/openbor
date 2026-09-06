@@ -26,6 +26,22 @@ These platforms are actively supported and may be compiled with the latest OpenB
 * Wii
 * PSP
 
+### Automated release builds
+
+Publishing a GitHub Release (`.github/workflows/release.yml`) automatically compiles and attaches a runnable executable for each of the platforms below to that release. Each platform is built by an independent CI job, and a `SHA256SUMS.txt` checksum file is generated alongside them.
+
+| Platform | Artifact | Executable format | How it is built |
+| --- | --- | --- | --- |
+| Linux x64 | `OpenBOR-linux-x86_64` | ELF (x86-64) | Native `ubuntu-latest` runner |
+| Linux arm64 | `OpenBOR-linux-aarch64` | ELF (aarch64) | Native `ubuntu-24.04-arm` runner |
+| Windows x32 | `OpenBOR-windows-x32.exe` | PE32 (i686) | i686 cross-compile in build image |
+| Windows x64 | `OpenBOR-windows-x64.exe` | PE32+ (x86-64) | x86_64 cross-compile in build image |
+| PSP | `OpenBOR-psp-EBOOT.PBP` | PBP / EBOOT | Official `pspdev/pspdev` image |
+| PS Vita (PSV) | `OpenBOR-vita.vpk` | VPK | Official `vitasdk/vitasdk` image |
+| macOS (Apple Silicon) | `OpenBOR-macos-arm64.zip` | Mach-O (arm64) `.app` | Native `macos-14` runner |
+
+> Notes: binaries ship the engine only and do not include game data (`.pak`); the macOS `.app` relies on Homebrew dylibs at fixed paths. Build details are in [`docs/BUILD.md`](docs/BUILD.md).
+
 ### Discontinued
 
 The following platforms are still available as legacy binaries, but are no longer supported and may not be compatible with current iterations of OpenBOR.
