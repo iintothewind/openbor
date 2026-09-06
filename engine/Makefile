@@ -655,6 +655,15 @@ endif
 
 LIBS           += -lpng -lz -lm
 
+# Windows x64 (x86_64-w64-mingw32) static link adds two system libs the 32-bit
+# win-sdk build never needed: -lsetupapi (SDL2 2.30 hidapi in libSDL2) and
+# -lwinpthread (winpthreads for libvpx threading).  These satisfy symbols from
+# libs placed earlier in LIBS, so they must come last (left-to-right link).
+# The 32-bit i686 path (GCC_TARGET=i686-w64-mingw32) is unaffected.
+ifeq ($(findstring x86_64, $(GCC_TARGET)), x86_64)
+LIBS           += -lsetupapi -lwinpthread
+endif
+
 #----------------------------------------------------------------------------------------------------
 # Rules to manage Files and Libraries for PSP
 #----------------------------------------------------------------------------------------------------

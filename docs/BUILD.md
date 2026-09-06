@@ -337,6 +337,7 @@ bash scripts/build-mac.sh [输出目录]     # 自动 brew 安装依赖，temp �
 | 平台 | 关键工具链 | 是否需放宽 `-Werror`/`-fcommon` | 产物 |
 |---|---|---|---|
 | Windows | **Docker 交叉** `i686-w64-mingw32-gcc`（GCC 12）+ win-sdk 库 | **是** | `engine/OpenBOR.exe` (PE32 32) |
+| Windows x64 | **Docker 交叉** `x86_64-w64-mingw32-gcc`；自带 win-sdk 无 64 位库，`build-win64-docker.sh` 现场从上游 tag 交叉编全套 64 位第三方库 | **是** | `engine/OpenBOR.exe` (PE32+ 64) |
 | Linux | Docker GCC 12 | **是** | `engine/OpenBOR` (ELF64) |
 | Linux arm64 | **Docker `--platform linux/arm64` + QEMU** 原生编（复用同 Dockerfile，无交叉工具链） | **是** | `OpenBOR` (ELF aarch64) |
 | Android | **Docker 自包含镜像**（`obor-android:6392`，含 NDK r26d + Gradle 8.7 + AGP 8.6 + SDL2 2.33）；或原生自备工具链 | **是** | `app-debug.apk` (arm64) |
@@ -424,3 +425,38 @@ docker push $NS/openbor-android:6392
 
 ### 8.5 安全提醒
 推送用的高权限 PAT（尤其 classic full PAT）属敏感凭证，发布完成后应尽快 **revoke**；日常复用只需匿名 `docker pull`，无需任何凭证。
+
+---
+
+## 9. 发布 CI（GitHub Actions，一次发布多平台产物）
+
+`.github/workflows/release.yml`：在 GitHub 上**创建（发布）一个 Release** 时自动触发，一次产出并上传 **7 个平台**产物到该 Release：
+
+| 产物文件 | 平台 | 构建方式 |
+|---|---|---|
+| `OpenBOR-linux-x86_64` | Linux x64 | ghcr 镜像 `openbor-build` 内跑 `build-linux.sh` |
+| `OpenBOR-linux-aarch64` | Linux arm64 | ghcr 镜像 `openbor-build-arm64` + QEMU 跑 `build-linux.sh` |
+| `OpenBOR-windows-x86.exe` | Windows x86 (32) | ghcr 镜像内跑 `build-win-docker.sh`（i686 交叉） |
+| `OpenBOR-windows-x64.exe` | Windows x64 (PE32+) | `build-win64-docker.sh`：容器内现场交叉编全套 64 位第三方库再链 |
+| `OpenBOR-psp-EBOOT.PBP` | PSP | 官方镜像 `pspdev/pspdev` |
+| `OpenBOR-vita.vpk` | Vita (PSV) | 官方镜像 `vitasdk/vitasdk` |
+| `OpenBOR-macos-arm64.zip` | macOS arm64 | 真实 `macos-14` runner 跑 `build-mac.sh`，`ditto` 打包 `.app` |
+
+外加 `SHA256SUMS.txt`。产物均不含游戏 `.pak`（见第 6 节）。
+
+### 9.1 触发与用法
+
+- 触发事件：`release: types: [published]`。在仓库 **Draft → Publish release** 即触发构建，产物自动挂到该 Release 的 Assets。
+- 也可 `workflow_dispatch` 手动跑（仅产 artifacts，需配合 Release 才上传）。
+- 版本号沿用 tag（Release 的 tag 即 `git tag`）。
+
+### 9.2 依赖的 ghcr 镜像
+
+Linux x64 / arm64、Win x86 直接 `docker pull` 第 8 节的三个公开镜像（工作流内 `docker tag` 回本地名）。PSP/Vita 用官方公共镜像。Win x64、macOS 不依赖 ghcr 镜像（各自现装交叉链 / 真机 Homebrew）。
+
+### 9.3 CI 踩坑（真跑测试 tag 暴露）
+
+- **挂载目录 `dubious ownership`（exit 128）**：Linux/Win/arm64 各 job 把仓库挂进 `/src` 原地编，脚本 `trap` 里的 `git checkout` 触发 git 安全策略报错 → 每个容器内先 `git config --global --add safe.directory /src`。
+- **arm64 `docker pull` 报 `no matching manifest for linux/amd64`**：ghcr 的 arm64 镜像只有 arm64 层，`pull` 必须显式 `--platform linux/arm64`。
+- **SDL2 拒绝 in-tree 构建**：win64 现场交叉编 SDL2 时，SDL 禁止在 git clone 目录内直接 configure → 在其内部 `build/` 做 out-of-tree（`../configure`）。
+- macOS `macos-14` 即 Apple Silicon runner，原生 arm64，无需交叉。
