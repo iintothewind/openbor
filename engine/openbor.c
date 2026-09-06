@@ -34371,16 +34371,11 @@ void borShutdown(int status, char *msg, ...)
     getRamStatus(BYTES);
     savesettings();
 
-    enginecreditsScreen = 1;		//entry point for the engine credits screen.
-
-    if(status != 2)
-    {
-        display_credits();
-    }
+    // Engine credits screen on shutdown removed: closing the window should
+    // terminate immediately instead of forcing the credits screen to play.
 
     if(startup_done)
     {
-        enginecreditsScreen = 0; //once the engine credits is done, disable flag.
         term_videomodes();
     }
 
