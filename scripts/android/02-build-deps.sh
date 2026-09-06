@@ -64,7 +64,9 @@ cat > "$O/config.h" <<'CFG'
 #define PACKAGE "vorbisidec"
 #define VERSION "1.2.1"
 CFG
-CF="-O2 -fPIC -fcommon -DUSE_MEMORY_H -DBYTE_ORDER=1234 -DLITTLE_ENDIAN=1234 -DBIG_ENDIAN=4321 -I$O -I$WORK/tremor -I$WORK/ogg/include"
+# HAVE_CONFIG_H 必需：sezero/tremor 的 os.h 用 #ifdef HAVE_CONFIG_H 守卫 include "config.h"，
+# 缺它则 config.h 里的 HAVE_ALLOCA 不被识别，os.h 直接 #error。官方 tremor 结构不同不需要。
+CF="-O2 -fPIC -fcommon -DHAVE_CONFIG_H -DUSE_MEMORY_H -DBYTE_ORDER=1234 -DLITTLE_ENDIAN=1234 -DBIG_ENDIAN=4321 -I$O -I$WORK/tremor -I$WORK/ogg/include"
 for f in mdct block window synthesis info floor1 floor0 vorbisfile res012 mapping0 registry codebook sharedbook; do
   "$CC" $CF -c "$WORK/tremor/$f.c" -o "$O/$f.o"
 done

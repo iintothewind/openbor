@@ -45,14 +45,16 @@ ENV PATH="/opt/gradle/bin:$PATH"
 
 # --- 预置第三方源码（固定 ref，容器内现编，离线可复现）---
 # 落在 /opt/openbor-deps，驱动脚本启动时 seed 拷贝到 $OBOR_WORK，01-clone 检测到 .git 即跳过联网 clone。
-# 注意：tremor 不在此处 clone —— 权威源 git.xiph.org 是 IPv6-only 域名，
-#       多数 Docker 宿主容器无 IPv6 出口会 DNS 失败，改由 docker-build.sh 运行时从宿主已验证源 seed。
+# tremor 也在此内置：权威源 git.xiph.org 是 IPv6-only 域名，CI 容器无 IPv6 出口会 DNS 失败，
+#   故改从 IPv4 可达的 GitHub mirror（sezero/tremor，fork 自 gitlab.xiph.org/xiph/tremor，
+#   文件与官方一致）预置，令 CI 可完全离线 seed，不再依赖宿主注入。
 ENV DEPS=/opt/openbor-deps
 RUN mkdir -p "$DEPS" && cd "$DEPS" \
     && export GIT_TERMINAL_PROMPT=0 \
     && git clone --depth 1 --branch SDL2    https://github.com/libsdl-org/SDL.git   sdl2 \
     && git clone --depth 1                  https://github.com/xiph/ogg.git         ogg \
     && git clone --depth 1 --branch v1.6.44 https://github.com/glennrp/libpng.git   libpng \
+    && git clone --depth 1                  https://github.com/sezero/tremor.git    tremor \
     && git clone --depth 1 --branch v1.14.1 https://github.com/webmproject/libvpx.git libvpx
 
 WORKDIR /src

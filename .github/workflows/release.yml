@@ -183,12 +183,55 @@ jobs:
           path: ${{ runner.temp }}/OpenBOR-macos-arm64.zip
 
   # ---------------------------------------------------------------------------
+  # Android arm64-v8a：自建镜像 ghcr.io/iintothewind/openbor-android:6394（内置 JDK/SDK/NDK/
+  # Gradle + 五库源码，含 tremor，CI 可完全离线 seed，不依赖 IPv6-only 的 git.xiph.org）。
+  # 容器内端到端 01→04 编 arm64-v8a debug APK。工作卷用容器内 Linux fs（OBOR_WORK=/work），
+  # 规避任何宿主 bind mount 丢失执行位的问题；产物 APK 拷到 $RUNNER_TEMP 供上传。
+  # ---------------------------------------------------------------------------
+  android:
+    name: Android arm64-v8a
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Pull android build image
+        run: |
+          docker pull ghcr.io/iintothewind/openbor-android:6394
+          docker tag ghcr.io/iintothewind/openbor-android:6394 obor-android:6394
+      - name: Build Android APK
+        run: |
+          docker run --rm \
+            -v "$GITHUB_WORKSPACE":/src \
+            -v "$RUNNER_TEMP":/out \
+            -e OBOR_WORK=/work \
+            -e ANDROID_HOME=/opt/android-sdk \
+            -w /src \
+            obor-android:6394 bash -c '
+              set -e
+              # seed: 镜像内置五库 -> 容器内工作卷（01-clone 检测到 .git 即跳过联网）
+              DEPS=/opt/openbor-deps
+              for d in sdl2 ogg libpng tremor libvpx; do
+                [ -d "/work/$d/.git" ] || cp -a "$DEPS/$d" "/work/$d"
+              done
+              bash scripts/android/01-clone.sh
+              bash scripts/android/02-build-deps.sh
+              bash scripts/android/03-build-native.sh
+              bash scripts/android/04-build-apk.sh
+              APK=/work/apk/app/build/outputs/apk/debug/app-debug.apk
+              [ -f "$APK" ] || { echo "X APK 未找到"; exit 1; }
+              cp "$APK" /out/OpenBOR-android-arm64-v8a.apk
+            '
+      - uses: actions/upload-artifact@v4
+        with:
+          name: OpenBOR-android-arm64-v8a
+          path: ${{ runner.temp }}/OpenBOR-android-arm64-v8a.apk
+
+  # ---------------------------------------------------------------------------
   # 汇总：等全部平台产物就绪，下载合并，附 SHA256SUMS，上传到刚发布的 Release。
   # ---------------------------------------------------------------------------
   release:
     name: Publish to Release
     runs-on: ubuntu-latest
-    needs: [linux-x64, win-x32, linux-arm64, psp, vita, macos-arm64]
+    needs: [linux-x64, win-x32, linux-arm64, android, psp, vita, macos-arm64]
     if: github.event_name == 'release'
     steps:
       - uses: actions/download-artifact@v4
@@ -209,6 +252,7 @@ jobs:
             out/OpenBOR-linux-x86_64
             out/OpenBOR-linux-aarch64
             out/OpenBOR-windows-x32.exe
+            out/OpenBOR-android-arm64-v8a.apk
             out/OpenBOR-psp-EBOOT.PBP
             out/OpenBOR-vita.vpk
             out/OpenBOR-macos-arm64.zip

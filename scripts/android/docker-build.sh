@@ -10,37 +10,15 @@ IMAGE="obor-android:6392"
 WORK_VOL="${OBOR_WORK:-$HOME/obor-android-build}"
 mkdir -p "$WORK_VOL"
 
-# ---- tremor 预置（特殊）----
-# tremor 权威源 git.xiph.org 是 IPv6-only 域名，多数 Docker 容器无 IPv6 出口会 DNS 失败，
-# 故不进镜像 clone，改由宿主（可能可达，或复用已验证完好源）预置进工作卷。
-# 优先 OBOR_TREMOR 指定的完好源目录；否则探测常见位置；都没有且容器也无 IPv6 时，
-# 01-clone 会退回尝试 git.xiph.org 并在失败时给出清晰指引。
-TREMOR_SEED=""
-if [ -n "${OBOR_TREMOR:-}" ]; then TREMOR_SEED="$OBOR_TREMOR"; fi
-if [ -z "$TREMOR_SEED" ]; then
-  for c in "$WORK_VOL/tremor" \
-           "$HOME/AppData/Local/Temp/obor_android/tremor" \
-           "$HOME/obor-android-build/tremor"; do
-    [ -f "$c/ivorbisfile.h" ] && { TREMOR_SEED="$c"; break; }
-  done
-fi
+# ---- tremor 说明 ----
+# tremor 权威源 git.xiph.org 是 IPv6-only 域名，CI 容器无 IPv6 出口会 DNS 失败。
+# 现由镜像内置 tremor（见 Dockerfile：从 IPv4 可达的 GitHub mirror 预置到 /opt/openbor-deps），
+# 容器内 seed 循环拷到工作卷，01-clone 检测到 .git 即跳过联网，无需宿主预置。
 
-echo ">> [1/2] 构建镜像 $IMAGE（首次联网拉 JDK/SDK/NDK/Gradle/四库源码，之后 docker cache 命中秒级）"
+echo ">> [1/2] 构建镜像 $IMAGE（首次联网拉 JDK/SDK/NDK/Gradle/五库源码，之后 docker cache 命中秒级）"
 docker build -t "$IMAGE" -f "$REPO/scripts/android/Dockerfile" "$REPO/scripts/android"
 
-# tremor 落到工作卷（宿主侧，路径与容器内 /work 同盘符映射）
-if [ ! -f "$WORK_VOL/tremor/ivorbisfile.h" ]; then
-  if [ -n "$TREMOR_SEED" ] && [ "$TREMOR_SEED" != "$WORK_VOL/tremor" ]; then
-    echo ">> 预置 tremor: $TREMOR_SEED -> $WORK_VOL/tremor"
-    rm -rf "$WORK_VOL/tremor"          # 清掉可能遗留的空/残缺目录，避免 cp 拷成 tremor/tremor
-    cp -a "$TREMOR_SEED" "$WORK_VOL/tremor"
-  elif [ -z "$TREMOR_SEED" ]; then
-    echo "!! 未找到可复用 tremor 源，将依赖容器内 01-clone 访问 git.xiph.org（需宿主容器有 IPv6 出口）。"
-    echo "!! 若失败：设 OBOR_TREMOR=/path/to/完好/tremor 重跑（tremor 源域名 git.xiph.org 仅 IPv6）。"
-  fi
-fi
-
-echo ">> [2/2] 容器内端到端构建（seed 四库 → 01-clone 跳过已存在 → 编库 → 重链 → APK）"
+echo ">> [2/2] 容器内端到端构建（seed 五库 → 01-clone 跳过已存在 → 编库 → 重链 → APK）"
 # MSYS_NO_PATHCONV 防 Git-Bash 路径误转（同 Linux 版 docker-build.sh）
 MSYS_NO_PATHCONV=1 docker run --rm \
   -v "$REPO":/src \
@@ -50,9 +28,10 @@ MSYS_NO_PATHCONV=1 docker run --rm \
   -w /src \
   "$IMAGE" bash -c '
 set -e
-# ---- seed: 镜像预置四库源码 → 工作卷（01-clone 检测到 .git 存在则跳过联网） ----
+# ---- seed: 镜像预置五库源码 → 工作卷（01-clone 检测到 .git 存在则跳过联网） ----
+# tremor 亦随镜像内置（见 Dockerfile），CI 无 IPv6 出口也能离线 seed。
 DEPS=/opt/openbor-deps
-for d in sdl2 ogg libpng libvpx; do
+for d in sdl2 ogg libpng tremor libvpx; do
   [ -d "/work/$d/.git" ] || cp -a "$DEPS/$d" "/work/$d"
 done
 echo ">> seed 完成"
