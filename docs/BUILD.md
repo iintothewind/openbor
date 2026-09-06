@@ -1,6 +1,6 @@
 # OpenBOR 6392 构建指南（Windows / Linux / arm64 / Android / PSP / Vita / macOS）
 
-> **懒人入口**：三个自建构建镜像已发布为 ghcr 公开包，可**直接 `docker pull` 复用、免从零 build**——坐标与拉取方式见 [第 8 节](#8-构建镜像发布到-ghcr免重复-build可直接拉取)。
+> **懒人入口**：四个自建构建镜像已发布为 ghcr 公开包，可**直接 `docker pull` 复用、免从零 build**——坐标与拉取方式见 [第 8 节](#8-构建镜像发布到-ghcr免重复-build可直接拉取)。
 
 本文记录 OpenBOR `6392` 分支（基于 `v6391`）在多个平台上**可复现**的构建方法：依赖、步骤、以及实际踩过的坑与解法。所有命令均在 `Windows / Git-Bash` 环境实测通过。
 
@@ -337,7 +337,7 @@ bash scripts/build-mac.sh [输出目录]     # 自动 brew 安装依赖，temp �
 | 平台 | 关键工具链 | 是否需放宽 `-Werror`/`-fcommon` | 产物 |
 |---|---|---|---|
 | Windows | **Docker 交叉** `i686-w64-mingw32-gcc`（GCC 12）+ win-sdk 库 | **是** | `engine/OpenBOR.exe` (PE32 32) |
-| Windows x64 | **Docker 交叉** `x86_64-w64-mingw32-gcc`；自带 win-sdk 无 64 位库，`build-win64-docker.sh` 现场从上游 tag 交叉编全套 64 位第三方库 | **是** | `engine/OpenBOR.exe` (PE32+ 64) |
+| Windows x64 | **Docker 交叉** `x86_64-w64-mingw32-gcc`；自带 win-sdk 无 64 位库，第三方库由 `Dockerfile.win64` 预烘进镜像 sysroot（版本锁在 `xbuild-win64-libs.sh`），`build-win64-docker.sh` 直接取用编 exe；裸容器无 sysroot 时现场交叉编兜底 | **是** | `engine/OpenBOR.exe` (PE32+ 64) |
 | Linux | Docker GCC 12 | **是** | `engine/OpenBOR` (ELF64) |
 | Linux arm64 | **Docker `--platform linux/arm64` + QEMU** 原生编（复用同 Dockerfile，无交叉工具链） | **是** | `OpenBOR` (ELF aarch64) |
 | Android | **Docker 自包含镜像**（`obor-android:6392`，含 NDK r26d + Gradle 8.7 + AGP 8.6 + SDL2 2.33）；或原生自备工具链 | **是** | `app-debug.apk` (arm64) |
@@ -351,14 +351,15 @@ bash scripts/build-mac.sh [输出目录]     # 自动 brew 安装依赖，temp �
 
 ## 8. 构建镜像发布到 ghcr（免重复 build，可直接拉取）
 
-三个**自建**构建镜像已发布为 GitHub Container Registry（ghcr.io）上的**公开包**，任何人可匿名拉取，免去每次本地从零 `docker build`（尤其 Android 镜像 5.22 GB，首次 build 联网烘 NDK/SDK/Gradle 很慢）。
+四个**自建**构建镜像已发布为 GitHub Container Registry（ghcr.io）上的**公开包**，任何人可匿名拉取，免去每次本地从零 `docker build`（尤其 Android 镜像 5.22 GB，首次 build 联网烘 NDK/SDK/Gradle 很慢）。
 
 ### 8.1 镜像坐标与 digest
 
 | 本地镜像名（脚本期望） | ghcr 公开坐标 | digest | 体积 | 用途 |
 |---|---|---|---|---|
 | `obor-build:6392` | `ghcr.io/iintothewind/openbor-build:6392` | `sha256:5b643eb09acb…` | 1.68 GB | Linux amd64 + Win 交叉 |
-| `obor-build-arm64:6392` | `ghcr.io/iintothewind/openbor-build-arm64:6392` | `sha256:31e93edf2404…` | 1.67 GB | Linux arm64（QEMU 原生编） |
+| `obor-build-arm64:6392` | `ghcr.io/iintothewind/openbor-build-arm64:6392` | `sha256:31e93edf2404…` | 1.67 GB | Linux arm64（QEMU 原生编，**发布 CI 已改用原生 arm64 runner，不再用它**，留作本地/无原生 runner 时用） |
+| `obor-build-win64:6392` | `ghcr.io/iintothewind/openbor-build-win64:6392` | `sha256:8121e6e358c9…` | 1.5 GB | Win x64 交叉（内含交叉链 + **预烘 64 位第三方库 sysroot**） |
 | `obor-android:6392` | `ghcr.io/iintothewind/openbor-android:6392` | `sha256:b11bae08da0b…` | 5.22 GB | Android（NDK+SDK+Gradle+三方源码） |
 
 > PSP/Vita 用**官方公共镜像**（`pspdev/pspdev:latest`、`vitasdk/vitasdk:latest`）、macOS **无法进 Docker**，均不发布、直接按第 4/5 节用官方镜像或真机。
@@ -371,6 +372,9 @@ docker tag  ghcr.io/iintothewind/openbor-build:6392  obor-build:6392
 
 docker pull ghcr.io/iintothewind/openbor-build-arm64:6392
 docker tag  ghcr.io/iintothewind/openbor-build-arm64:6392  obor-build-arm64:6392
+
+docker pull ghcr.io/iintothewind/openbor-build-win64:6392
+docker tag  ghcr.io/iintothewind/openbor-build-win64:6392  obor-build-win64:6392
 
 docker pull ghcr.io/iintothewind/openbor-android:6392
 docker tag  ghcr.io/iintothewind/openbor-android:6392  obor-android:6392
@@ -393,12 +397,14 @@ NS=ghcr.io/iintothewind
 # 1) 重新 tag（前缀 openbor-）
 docker tag obor-build:6392         $NS/openbor-build:6392
 docker tag obor-build-arm64:6392   $NS/openbor-build-arm64:6392
+docker tag obor-build-win64:6392   $NS/openbor-build-win64:6392
 docker tag obor-android:6392       $NS/openbor-android:6392
 # 2) 登录 ghcr（见 8.4 身份要求）
 printf '%s' "$GITHUB_TOKEN" | docker login ghcr.io -u iintothewind --password-stdin
 # 3) 推送
 docker push $NS/openbor-build:6392
 docker push $NS/openbor-build-arm64:6392
+docker push $NS/openbor-build-win64:6392
 docker push $NS/openbor-android:6392
 ```
 
@@ -409,18 +415,19 @@ docker push $NS/openbor-android:6392
   ```
   https://github.com/users/iintothewind/packages/container/openbor-build/settings
   https://github.com/users/iintothewind/packages/container/openbor-build-arm64/settings
+  https://github.com/users/iintothewind/packages/container/openbor-build-win64/settings
   https://github.com/users/iintothewind/packages/container/openbor-android/settings
   ```
 - **验证 public**（不带任何本地凭证的匿名 token 交换）：
   ```bash
-  for p in openbor-build openbor-build-arm64 openbor-android; do
+  for p in openbor-build openbor-build-arm64 openbor-build-win64 openbor-android; do
     tok=$(curl -s "https://ghcr.io/token?scope=repository:iintothewind/$p:pull" \
           | python -c "import sys,json;print(json.load(sys.stdin)['token'])")
     curl -s -o /dev/null -w "$p: HTTP %{http_code}\n" \
       -H "Authorization: Bearer $tok" \
       -H "Accept: application/vnd.oci.image.manifest.v1+json, application/vnd.docker.distribution.manifest.v2+json, application/vnd.oci.image.index.v1+json, application/vnd.docker.distribution.manifest.list.v2+json" \
       "https://ghcr.io/v2/iintothewind/$p/manifests/6392"
-  done   # 三包均应 HTTP 200 => 可匿名拉
+  done   # 四包均应 HTTP 200 => 可匿名拉
   ```
 
 ### 8.5 安全提醒
@@ -435,9 +442,9 @@ docker push $NS/openbor-android:6392
 | 产物文件 | 平台 | 构建方式 |
 |---|---|---|
 | `OpenBOR-linux-x86_64` | Linux x64 | **原生 `ubuntu-latest` runner**（本身就是 x86_64 Linux）直接 apt 装依赖 + 跑 `build-linux.sh`，无容器/QEMU |
-| `OpenBOR-linux-aarch64` | Linux arm64 | ghcr 镜像 `openbor-build-arm64` + QEMU 跑 `build-linux.sh` |
+| `OpenBOR-linux-aarch64` | Linux arm64 | **原生 `ubuntu-24.04-arm` runner**（GitHub 原生 arm64，已 GA、public 免费）直接 apt 装依赖 + 跑 `build-linux.sh`，无容器/QEMU |
 | `OpenBOR-windows-x32.exe` | Windows x32 (32) | ghcr 镜像 `openbor-build` 内跑 `build-win-docker.sh`（i686 交叉） |
-| `OpenBOR-windows-x64.exe` | Windows x64 (PE32+) | `build-win64-docker.sh`：容器内现场交叉编全套 64 位第三方库再链 |
+| `OpenBOR-windows-x64.exe` | Windows x64 (PE32+) | ghcr 镜像 `openbor-build-win64`（预烘 64 位第三方库 sysroot）内跑 `build-win64-docker.sh`，只编 OpenBOR 本体 |
 | `OpenBOR-psp-EBOOT.PBP` | PSP | 官方镜像 `pspdev/pspdev` |
 | `OpenBOR-vita.vpk` | Vita (PSV) | 官方镜像 `vitasdk/vitasdk` |
 | `OpenBOR-macos-arm64.zip` | macOS arm64 | 真实 `macos-14` runner 跑 `build-mac.sh`，`ditto` 打包 `.app` |
@@ -452,7 +459,7 @@ docker push $NS/openbor-android:6392
 
 ### 9.2 依赖的 ghcr 镜像
 
-仅 **Linux arm64** 与 **Win x32** 依赖第 8 节的 ghcr 公开镜像（工作流内 `docker pull` + `docker tag` 回本地名）。**Linux x64 用原生 runner 直接编，不再拉镜像。**PSP/Vita 用官方公共镜像。Win x64、macOS 不依赖 ghcr 镜像（各自现装交叉链 / 真机 Homebrew）。
+仅 **Win x32** 与 **Win x64** 依赖第 8 节的 ghcr 公开镜像（工作流内 `docker pull` + `docker tag` 回本地名）。**Linux x64、Linux arm64 均用 GitHub 原生 runner（`ubuntu-latest` / `ubuntu-24.04-arm`）直接编，不再拉镜像、也不用 QEMU。**PSP/Vita 用官方公共镜像。macOS 用真机 `macos-14` runner + Homebrew。
 
 ### 9.3 CI 踩坑（真跑测试 tag 暴露）
 
@@ -460,6 +467,7 @@ docker push $NS/openbor-android:6392
 - **Linux x64 容器/QEMU 无必要**：GitHub Actions 的 `ubuntu-latest` 本身即 x86_64 Linux，直接 apt 装依赖原生编即可，无需容器/QEMU（原合并 job 走 ghcr 容器纯属多余且慢）。
 - **Linux/Win 合并 job 连坐**：Linux 与 Win x32 合成一个 job 时，Linux 侧任何失败会连带 Win 步骤不执行 → 拆成两个独立 job。
 - **挂载目录 `dubious ownership`（exit 128）**：容器挂载 `/src` 原地编时，脚本 `trap` 里的 `git checkout` 触发 git 安全策略报错 → 每个容器内先 `git config --global --add safe.directory /src`。
-- **arm64 `docker pull` 报 `no matching manifest for linux/amd64`**：ghcr 的 arm64 镜像只有 arm64 层，`pull` 必须显式 `--platform linux/arm64`。
+- **arm64 `docker pull` 报 `no matching manifest for linux/amd64`**（仅本地仍走 arm64 容器方式时适用；发布 CI 的 linux-arm64 已改用原生 `ubuntu-24.04-arm` runner，不再拉 arm64 镜像）：ghcr 的 arm64 镜像只有 arm64 层，`pull` 必须显式 `--platform linux/arm64`。
 - **SDL2 拒绝 in-tree 构建**：win64 现场交叉编 SDL2 时，SDL 禁止在 git clone 目录内直接 configure → 在其内部 `build/` 做 out-of-tree（`../configure`）。
+- **win64 镜像 build context 用 `scripts/` 而非仓库根**：本仓库 `.git` 达 1.3 GB，以仓库根做 context 每次 `docker build` 都要把整个 `.git` 传给 daemon → `docker build -f scripts/Dockerfile.win64 ... scripts`（context 设成 `scripts/`，`COPY` 源路径相应去掉 `scripts/` 前缀）。第三方库交叉编译逻辑收敛进 `scripts/xbuild-win64-libs.sh`，镜像与本地兜底共用同一份，避免版本/参数漂移。
 - macOS `macos-14` 即 Apple Silicon runner，原生 arm64，无需交叉。

@@ -4,129 +4,42 @@
 # 与 scripts/build-win-docker.sh（i686 / win32）互补：本脚本用
 # x86_64-w64-mingw32-gcc 产出真正的 64 位 PE32+ OpenBOR-x64.exe。
 #
-# 第三方库来源：自带 tools/win-sdk 只有 32 位 .a，且 Debian 源无这些库的
-# x86_64 mingw 交叉版，故本脚本在容器内从上游 tag 源码现场交叉编译出全套
-# 64 位静态库（zlib / SDL2 / SDL2_gfx / libpng / libogg / libvorbis / libvpx），
-# 组装成 /tmp/win64sysroot 后作为 SDKPATH 喂给 engine/Makefile。完全可复现，
-# 不依赖任何外部零散预编译包。
+# 第三方库（zlib / SDL2 / SDL2_gfx / libpng / libogg / libvorbis / libvpx）：
+# 自带 tools/win-sdk 只有 32 位 .a，且 Debian 源无这些库的 x86_64 mingw 交叉版。
+# 首选由 scripts/Dockerfile.win64 预先把它们交叉编好烘进镜像 sysroot
+# （/opt/win64sysroot），pull 镜像即用；若 sysroot 不在（裸 debian 容器），下面
+# 会调 scripts/xbuild-win64-libs.sh 现场交叉编一份兜底。两条路径共用同一份脚本
+# 与同一批锁定版本，产物一致、可复现。
 #
-# 版本全部锁定，保证可复现；Makefile 的 x86_64 交叉分支见 engine/Makefile
-# Windows 段（由 GCC_TARGET=x86_64-w64-mingw32 触发，关 -m32/MMX、上 -m64/AMD64）。
+# Makefile 的 x86_64 交叉分支见 engine/Makefile Windows 段（由
+# GCC_TARGET=x86_64-w64-mingw32 触发，关 -m32/MMX、上 -m64/AMD64）。
 #
 # 用法: bash scripts/build-win64-docker.sh
+#   镜像内: docker run --rm -v "$PWD":/src -w /src obor-build-win64:6392 \
+#             bash -c 'git config --global --add safe.directory /src && \
+#                      bash scripts/build-win64-docker.sh'
 #   产物: engine/OpenBOR.exe（64 位；与 win32 同名，由外层脚本改名区分）
 set -euo pipefail
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 TRIP="x86_64-w64-mingw32"
-SDK="${WINSDK:-/tmp/win64sysroot}"
+# 默认与 scripts/Dockerfile.win64 预置的 sysroot 同路径：pull 该镜像即用，
+# 下面的就绪判断成立 -> 不再现场重编第三方库。
+SDK="${WINSDK:-/opt/win64sysroot}"
 
-# 上游锁定版本（可复现）
-VER_ZLIB=v1.3.1
-VER_SDL=release-2.30.12
-COMMIT_SDLGFX=c4aca6b9700ec0db0abd316809e7e6038c511ce2
-VER_LIBPNG=v1.6.44
-VER_OGG=v1.3.5
-VER_VORBIS=v1.3.7
-VER_VPX=v1.14.1
+# 第三方库（zlib/SDL2/SDL2_gfx/libpng/libogg/libvorbis/libvpx）的版本锁定与
+# 交叉编译方式收敛在 scripts/xbuild-win64-libs.sh —— 镜像构建与这里的兜底
+# 共用同一份实现，避免版本/参数漂移。
+XBUILD_LIBS="$REPO/scripts/xbuild-win64-libs.sh"
 
-# 交叉工具链 env
+# OpenBOR 本体的交叉 env（第三方库由 xbuild-win64-libs.sh 自带一份）
 export CC="$TRIP-gcc" CXX="$TRIP-g++" AR="$TRIP-ar" RANLIB="$TRIP-ranlib" \
        STRIP="$TRIP-strip" WINDRES="$TRIP-windres" NM="$TRIP-nm"
-export PKG_CONFIG_LIBDIR="$SDK/lib/pkgconfig"
-# 交叉下各 autotools 库（libpng 找 zlib、vorbis 找 ogg）默认搜 host /usr/{include,lib}
-# （那是 host ELF，交叉链不能用）。显式把 sysroot 加进 CPPFLAGS/LDFLAGS，
-# 让它们命中先前装进 $SDK 的交叉 .a/.h。
-export CPPFLAGS="-I$SDK/include"
-export LDFLAGS="-L$SDK/lib"
-MAKEJ="-j$(nproc 2>/dev/null || echo 4)"
 
 if [ ! -f "$SDK/lib/libSDL2.a" ] || [ ! -f "$SDK/lib/libvpx.a" ]; then
-  echo ">> 现场交叉编译 64 位第三方库到 $SDK"
-  rm -rf "$SDK"; mkdir -p "$SDK"
-  BUILD=$(mktemp -d)
-  cd "$BUILD"
-
-  # zlib（libpng/SDL 依赖）
-  git clone --depth 1 --branch "$VER_ZLIB" https://github.com/madler/zlib zlib
-  ( cd zlib
-    CHOST="$TRIP" ./configure --static --prefix="$SDK" >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null )
-  # zlib 的 configure 不产出 pkg-config 文件；libpng 靠 pkg-config 找 zlib，
-  # 手写一个 zlib.pc 进 sysroot（PKG_CONFIG_LIBDIR 已指向此处）。
-  mkdir -p "$SDK/lib/pkgconfig"
-  cat > "$SDK/lib/pkgconfig/zlib.pc" <<PCEOF
-prefix=$SDK
-exec_prefix=\${prefix}
-libdir=\${exec_prefix}/lib
-includedir=\${prefix}/include
-
-Name: zlib
-Description: zlib compression library
-Version: ${VER_ZLIB#v}
-Requires:
-Libs: -L\${libdir} -lz
-Cflags: -I\${includedir}
-PCEOF
-
-  # SDL2（autotools，静态）。SDL 禁止在 git clone 目录内 in-tree 构建，
-  # 故在其内部建 build 目录做 out-of-tree 构建。
-  git clone --depth 1 --branch "$VER_SDL" https://github.com/libsdl-org/SDL sdl
-  ( cd sdl
-    ./autogen.sh >/dev/null 2>&1 || autoreconf -fi >/dev/null 2>&1
-    mkdir -p build && cd build
-    ../configure --host="$TRIP" --build="$(gcc -dumpmachine)" \
-      --prefix="$SDK" --enable-static --disable-shared >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null )
-
-  # SDL2_gfx（仅 .c + 头，无 autotools，手写编译成 .a）。官方仓库无 tag，
-  # 锁 main 的 commit 保证可复现。依赖已装好的 SDL 头。
-  git clone https://github.com/ferzkopp/SDL2_gfx sdlgfx
-  ( cd sdlgfx
-    git checkout "$COMMIT_SDLGFX" >/dev/null 2>&1
-    mkdir -p "$SDK/include/SDL2"
-    cp SDL2_framerate.h SDL2_gfxPrimitives.h SDL2_imageFilter.h SDL2_rotozoom.h "$SDK/include/SDL2/"
-    for c in SDL2_framerate SDL2_gfxPrimitives SDL2_imageFilter SDL2_rotozoom; do
-      "$CC" -O2 -DGM_EH= -I"$SDK/include" -I"$SDK/include/SDL2" -c "$c.c" -o "$c.o"
-    done
-    "$AR" rcs "$SDK/lib/libSDL2_gfx.a" SDL2_framerate.o SDL2_gfxPrimitives.o SDL2_imageFilter.o SDL2_rotozoom.o )
-
-  # libpng
-  git clone --depth 1 --branch "$VER_LIBPNG" https://github.com/glennrp/libpng libpng
-  ( cd libpng
-    ./autogen.sh >/dev/null 2>&1 || autoreconf -fi >/dev/null 2>&1
-    ./configure --host="$TRIP" --build="$(gcc -dumpmachine)" \
-      --prefix="$SDK" --enable-static --disable-shared >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null )
-
-  # libogg
-  git clone --depth 1 --branch "$VER_OGG" https://github.com/xiph/ogg ogg
-  ( cd ogg
-    ./autogen.sh >/dev/null 2>&1 || autoreconf -fi >/dev/null 2>&1
-    ./configure --host="$TRIP" --build="$(gcc -dumpmachine)" \
-      --prefix="$SDK" --enable-static --disable-shared >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null )
-
-  # libvorbis
-  git clone --depth 1 --branch "$VER_VORBIS" https://github.com/xiph/vorbis vorbis
-  ( cd vorbis
-    ./autogen.sh >/dev/null 2>&1 || autoreconf -fi >/dev/null 2>&1
-    ./configure --host="$TRIP" --build="$(gcc -dumpmachine)" \
-      --prefix="$SDK" --enable-static --disable-shared >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null )
-
-  # libvpx（libvpx 自带 win64 交叉 target）
-  git clone --depth 1 --branch "$VER_VPX" https://github.com/webmproject/libvpx vpx
-  ( cd vpx
-    ./configure --target=x86_64-win64-gcc --prefix="$SDK" \
-      --disable-shared --enable-static --disable-examples --disable-tools --disable-docs \
-      --disable-unit-tests >/dev/null
-    make $MAKEJ >/dev/null && make install >/dev/null
-    # libvpx 装成 libvpx.a 或带版本号名，统一软链一份 libvpx.a 供 -lvpx
-    [ -f "$SDK/lib/libvpx.a" ] || ln -sf "$(basename "$(find "$SDK/lib" -name 'libvpx*.a'|head -1)")" "$SDK/lib/libvpx.a" )
-
-  echo ">> 第三方库产出："
-  ls "$SDK"/lib/*.a
+  echo ">> $SDK 无预置第三方库，现场交叉编译兜底"
+  WINSDK="$SDK" bash "$XBUILD_LIBS"
+  cd "$REPO"
 fi
 
 # 组装 OpenBOR 编译环境（与 build-win-docker.sh 对齐，仅换 x86_64 交叉链）

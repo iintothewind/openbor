@@ -20,17 +20,22 @@ bash scripts/docker-build.sh          # 建镜像 → 容器内先编 Linux 原�
 
 > Windows 交叉编同样需放宽 `-Werror` + `-fcommon`（交叉是 GCC 12），与 Linux 段一致。
 
-### Windows x64（64 位，`build-win64-docker.sh`）
-产出真 64 位 `PE32+` exe。自带 `win-sdk` 只有 32 位第三方库、Debian 源也无这些库的 x86_64 mingw 交叉版，故本脚本在容器内**从上游锁定 tag 现场交叉编译**全套 64 位静态库（zlib / SDL2 / SDL2_gfx / libpng / libogg / libvorbis / libvpx），组装成 sysroot 再链出 exe：
+### Windows x64（64 位，`build-win64-docker.sh` + `Dockerfile.win64`）
+产出真 64 位 `PE32+` exe。自带 `win-sdk` 只有 32 位第三方库、Debian 源也无这些库的 x86_64 mingw 交叉版，故需要一套 64 位交叉静态库（zlib / SDL2 / SDL2_gfx / libpng / libogg / libvorbis / libvpx）。版本与构建方式**单一来源**收敛在 `xbuild-win64-libs.sh`（锁上游 tag，可复现），两条路径复用它：
 ```bash
-# 需容器内有 gcc-mingw-w64-x86-64 等交叉链（见 .github/workflows/release.yml 的安装清单）
-bash scripts/build-win64-docker.sh
+# 首选：镜像内已预烘好 sysroot（/opt/win64sysroot），直接编 OpenBOR 本体
+docker build -f scripts/Dockerfile.win64 -t obor-build-win64:6392 scripts   # context 用 scripts/，避开 1.3G .git
+# 或匿名拉现成镜像：docker pull ghcr.io/iintothewind/openbor-build-win64:6392
+MSYS_NO_PATHCONV=1 docker run --rm -v "$PWD":/src -w /src obor-build-win64:6392 \
+  bash -c 'git config --global --add safe.directory /src && bash scripts/build-win64-docker.sh'
+
+# 兜底：裸 debian 容器（无预置 sysroot）也能跑——脚本会现场调 xbuild-win64-libs.sh 编一份
 ```
 - 产物：`engine/OpenBOR.exe`（PE32+ 64-bit），末尾用 `file` 校验必须是 `PE32+`。
 - `engine/Makefile` 的 Windows 段已加 **x86_64 交叉门控**（`GCC_TARGET` 含 `x86_64` → `amd64`/`-m64`/`-DAMD64`/无 MMX；i686 与原生 win-sdk 不设 `GCC_TARGET`，保持 `x86`/`-m32`/MMX 不变）。见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节。
 
 ### 发布 CI（`.github/workflows/release.yml`）
-在 GitHub **发布一个 Release** 时自动触发，**各平台独立 job**，一次产出并上传 **linux-x64 / linux-arm64 / win-x32 / win-x64 / psp / vita / macos-arm64** 七个平台产物到该 Release（Linux x64 用原生 runner 直接编，详见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节）。
+在 GitHub **发布一个 Release** 时自动触发，**各平台独立 job**，一次产出并上传 **linux-x64 / linux-arm64 / win-x32 / win-x64 / psp / vita / macos-arm64** 七个平台产物到该 Release（Linux x64、Linux arm64 均用 GitHub 原生 runner 直接编，无容器/QEMU；win-x64 用预烘依赖的 `Dockerfile.win64` 镜像，详见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节）。
 
 ### 原生 Windows（备用，未采用）
 ```bash
@@ -115,7 +120,7 @@ bash scripts/build-mac.sh [输出目录]   # 自动 brew 装依赖，temp 副本
 ## 目录结构
 ```
 scripts/
-  build-win.sh  build-win-docker.sh  build-win64-docker.sh  build-linux.sh  build-linux-arm64.sh  docker-build.sh  Dockerfile  README.md
+  build-win.sh  build-win-docker.sh  build-win64-docker.sh  xbuild-win64-libs.sh  build-linux.sh  build-linux-arm64.sh  docker-build.sh  Dockerfile  Dockerfile.win64  README.md
   build-psp.sh  build-vita.sh  docker-build-pspvita.sh   # PSP/Vita（官方工具链镜像）
   build-mac.sh                                          # macOS（须在真实 Apple Silicon Mac 上跑）
   android/

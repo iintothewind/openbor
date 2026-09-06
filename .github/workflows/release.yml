@@ -61,24 +61,29 @@ jobs:
           path: ${{ runner.temp }}/OpenBOR-windows-x32.exe
 
   # ---------------------------------------------------------------------------
-  # Linux arm64：同 Dockerfile，--platform linux/arm64 + QEMU 模拟原生编译。
-  # 镜像 = ghcr.io/iintothewind/openbor-build-arm64（已交叉 arm64 依赖）。
+  # Linux arm64：GitHub Actions 原生 arm64 hosted runner（ubuntu-24.04-arm，已
+  # GA、public 仓库免费）。runner 架构即 aarch64，与 linux-x64 同形态直接 apt
+  # 装依赖 + 原生编译，无需容器/QEMU，也不依赖 ghcr arm64 镜像。
   # ---------------------------------------------------------------------------
   linux-arm64:
     name: Linux arm64
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     steps:
       - uses: actions/checkout@v4
-      - uses: docker/setup-qemu-action@v3
-      - name: Pull arm64 build image
+      - name: Install deps
         run: |
-          docker pull --platform linux/arm64 ghcr.io/iintothewind/openbor-build-arm64:6392
-          docker tag  ghcr.io/iintothewind/openbor-build-arm64:6392 obor-build-arm64:6392
-      - name: Build (QEMU emulated, slow)
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential pkg-config yasm git \
+            libsdl2-dev libsdl2-gfx-dev libpng-dev zlib1g-dev \
+            libvorbis-dev libogg-dev libvpx-dev
+      - name: Build Linux arm64 (native)
         run: |
-          docker run --rm --platform linux/arm64 \
-            -v "$GITHUB_WORKSPACE":/src -w /src obor-build-arm64:6392 \
-            bash -c 'git config --global --add safe.directory /src && bash scripts/build-linux.sh'
+          # gcc -dumpmachine = aarch64-linux-gnu，命中 engine/Makefile 的 aarch64
+          # 分支（LIBRARIES=/usr/lib/aarch64-linux-gnu，关 -m64/-DAMD64/MMX）。
+          TARGET_ARCH=arm64 bash scripts/build-linux.sh
+          file engine/OpenBOR | grep -q "aarch64" \
+            || { echo "!! 产物不是 ELF aarch64：$(file engine/OpenBOR)" >&2; exit 1; }
           cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-aarch64"
       - uses: actions/upload-artifact@v4
         with:
@@ -86,27 +91,24 @@ jobs:
           path: ${{ runner.temp }}/OpenBOR-linux-aarch64
 
   # ---------------------------------------------------------------------------
-  # Windows x64：容器内现场交叉编译全套 64 位第三方库（自带 win-sdk 只有 32 位），
-  # 再交叉链出 PE32+ OpenBOR.exe。见 scripts/build-win64-docker.sh。
+  # Windows x64：用自建镜像 ghcr.io/iintothewind/openbor-build-win64 —— 内含
+  # x86_64-w64-mingw32 交叉链 + **预编译**的 64 位第三方库 sysroot（/opt/win64sysroot），
+  # 故 job 内只需编 OpenBOR 本体。第三方库版本锁在 scripts/xbuild-win64-libs.sh，
+  # 烘进镜像由 scripts/Dockerfile.win64 完成；镜像若缺 sysroot，脚本会现场重编兜底。
   # ---------------------------------------------------------------------------
   win-x64:
     name: Windows x64
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: Pull build image
+        run: |
+          docker pull ghcr.io/iintothewind/openbor-build-win64:6392
+          docker tag  ghcr.io/iintothewind/openbor-build-win64:6392 obor-build-win64:6392
       - name: Build Windows x64 (cross)
         run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src debian:bookworm-slim bash -c '
-            set -e
-            export DEBIAN_FRONTEND=noninteractive
-            apt-get update
-            apt-get install -y --no-install-recommends \
-              gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
-              autoconf automake libtool nasm yasm pkg-config \
-              make perl git curl ca-certificates file zlib1g-dev
-            git config --global --add safe.directory /src
-            bash scripts/build-win64-docker.sh
-          '
+          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build-win64:6392 \
+            bash -c 'git config --global --add safe.directory /src && bash scripts/build-win64-docker.sh'
           cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x64.exe"
       - uses: actions/upload-artifact@v4
         with:
