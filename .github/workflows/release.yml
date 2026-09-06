@@ -207,6 +207,9 @@ jobs:
             -w /src \
             obor-android:6394 bash -c '
               set -e
+              # /src 由 runner 用户 checkout，容器内以 root 跑 git（版本注入/libvpx git clean）会触发
+              # dubious ownership；与 win job 一致，先把 /src 加入 safe.directory。
+              git config --global --add safe.directory /src
               mkdir -p /work   # OBOR_WORK=/work 未 bind mount，落在容器可写层(ext4/overlayfs 保留执行位)，job 结束自动清理
               # seed: 镜像内置五库 -> 容器内工作卷（01-clone 检测到 .git 即跳过联网）
               DEPS=/opt/openbor-deps
