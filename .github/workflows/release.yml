@@ -1,7 +1,8 @@
 name: Release builds
 
-# 发布一个 GitHub Release 时，自动构建并上传 7 个平台产物到该 Release：
-#   linux-x64, linux-arm64, win-x64, win-x32, psp, psv(vita), macos-arm64
+# 发布一个 GitHub Release 时，自动构建并上传平台产物到该 Release：
+#   linux-x64, linux-arm64, win-x32, psp, psv(vita), macos-arm64
+# 注：win-x64 产物目前一直崩溃无法运行，暂从 release 关闭（见下方被注释的 win-x64 job）。
 # 也可 workflow_dispatch 手动触发（仅产 artifacts，需配合一个 Release 才上传）。
 on:
   release:
@@ -91,29 +92,27 @@ jobs:
           path: ${{ runner.temp }}/OpenBOR-linux-aarch64
 
   # ---------------------------------------------------------------------------
-  # Windows x64：用自建镜像 ghcr.io/iintothewind/openbor-build-win64 —— 内含
-  # x86_64-w64-mingw32 交叉链 + **预编译**的 64 位第三方库 sysroot（/opt/win64sysroot），
-  # 故 job 内只需编 OpenBOR 本体。第三方库版本锁在 scripts/xbuild-win64-libs.sh，
-  # 烘进镜像由 scripts/Dockerfile.win64 完成；镜像若缺 sysroot，脚本会现场重编兜底。
+  # Windows x64：暂关闭。win64 产物目前一直崩溃无法运行，先从 release 移除，
+  # 待修复后再取消注释（连同下方 release job 的 needs / files 一并恢复）。
   # ---------------------------------------------------------------------------
-  win-x64:
-    name: Windows x64
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - name: Pull build image
-        run: |
-          docker pull ghcr.io/iintothewind/openbor-build-win64:6392
-          docker tag  ghcr.io/iintothewind/openbor-build-win64:6392 obor-build-win64:6392
-      - name: Build Windows x64 (cross)
-        run: |
-          docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build-win64:6392 \
-            bash -c 'git config --global --add safe.directory /src && bash scripts/build-win64-docker.sh'
-          cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x64.exe"
-      - uses: actions/upload-artifact@v4
-        with:
-          name: OpenBOR-windows-x64
-          path: ${{ runner.temp }}/OpenBOR-windows-x64.exe
+  # win-x64:
+  #   name: Windows x64
+  #   runs-on: ubuntu-latest
+  #   steps:
+  #     - uses: actions/checkout@v4
+  #     - name: Pull build image
+  #       run: |
+  #         docker pull ghcr.io/iintothewind/openbor-build-win64:6392
+  #         docker tag  ghcr.io/iintothewind/openbor-build-win64:6392 obor-build-win64:6392
+  #     - name: Build Windows x64 (cross)
+  #       run: |
+  #         docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build-win64:6392 \
+  #           bash -c 'git config --global --add safe.directory /src && bash scripts/build-win64-docker.sh'
+  #         cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x64.exe"
+  #     - uses: actions/upload-artifact@v4
+  #       with:
+  #         name: OpenBOR-windows-x64
+  #         path: ${{ runner.temp }}/OpenBOR-windows-x64.exe
 
   # ---------------------------------------------------------------------------
   # PSP：官方 pspdev 镜像交叉 → EBOOT.PBP
@@ -189,7 +188,7 @@ jobs:
   release:
     name: Publish to Release
     runs-on: ubuntu-latest
-    needs: [linux-x64, win-x32, linux-arm64, win-x64, psp, vita, macos-arm64]
+    needs: [linux-x64, win-x32, linux-arm64, psp, vita, macos-arm64]
     if: github.event_name == 'release'
     steps:
       - uses: actions/download-artifact@v4
@@ -210,7 +209,6 @@ jobs:
             out/OpenBOR-linux-x86_64
             out/OpenBOR-linux-aarch64
             out/OpenBOR-windows-x32.exe
-            out/OpenBOR-windows-x64.exe
             out/OpenBOR-psp-EBOOT.PBP
             out/OpenBOR-vita.vpk
             out/OpenBOR-macos-arm64.zip
