@@ -30,7 +30,7 @@ bash scripts/build-win64-docker.sh
 - `engine/Makefile` 的 Windows 段已加 **x86_64 交叉门控**（`GCC_TARGET` 含 `x86_64` → `amd64`/`-m64`/`-DAMD64`/无 MMX；i686 与原生 win-sdk 不设 `GCC_TARGET`，保持 `x86`/`-m32`/MMX 不变）。见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节。
 
 ### 发布 CI（`.github/workflows/release.yml`）
-在 GitHub **发布一个 Release** 时自动触发，一次产出并上传 **linux-x64 / linux-arm64 / win-x86 / win-x64 / psp / vita / macos-arm64** 七个平台产物到该 Release（详见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节）。
+在 GitHub **发布一个 Release** 时自动触发，**各平台独立 job**，一次产出并上传 **linux-x64 / linux-arm64 / win-x32 / win-x64 / psp / vita / macos-arm64** 七个平台产物到该 Release（Linux x64 用原生 runner 直接编，详见 [`../docs/BUILD.md`](../docs/BUILD.md) 第 9 节）。
 
 ### 原生 Windows（备用，未采用）
 ```bash
