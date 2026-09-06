@@ -10,3 +10,4 @@
 8. If new evidence invalidates the plan, stop and revise it.
 9. Act directly; explain only when analysis affects the result.
 10. Discuss in Chinese; repository artifacts in English.
+11. Default branch is `openbor3`. Each release bumps the version `3.1_bNNNN` (build +1, e.g. 3.1_b6394 -> 3.1_b6395). Run `scripts/bump-version.sh` to update all version sources from the single `VERSION` file — do not edit `engine/version.h` / `engine/resources/OpenBOR.rc` / `OpenBOR.res` by hand.
