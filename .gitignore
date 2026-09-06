@@ -1,9 +1,38 @@
 *.o
 *.d
 *.Td
-OpenBOR.elf
 meta.xml
 engine/releases/
 
 # Reasonix 运行器状态目录
 .reasonix/
+
+# ---------------------------------------------------------------------------
+# 构建产物 / 可执行文件（各平台）
+# ---------------------------------------------------------------------------
+# 引擎可执行（Linux/mac 无扩展、Windows .exe、PSP .elf）
+OpenBOR
+OpenBOR.exe
+OpenBOR.elf
+engine/OpenBOR
+engine/OpenBOR.exe
+engine/OpenBOR.elf
+
+# 常见可执行 / 库扩展名（主要针对编译产物；已跟踪文件不受 .gitignore 影响）
+*.exe
+*.dll
+*.dylib
+*.so
+*.a
+*.o
+*.out
+*.elf
+*.prx
+*.pyd
+
+# 但保留仓库自带的构建工具与预编译第三方库（这些是有意入库的）
+!tools/bin/**
+!tools/7-Zip/**
+!tools/borplay/source/*.exe
+!engine/android/jni/openbor/lib/**
+!engine/psp/**/*.prx
