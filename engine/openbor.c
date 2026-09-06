@@ -19356,6 +19356,80 @@ void set_opponent(entity *ent, entity *other)
 }
 
 
+/*
+ * Push a newly received attack ID into the target's ring of recent ID's.
+ * Shifts existing entries down one slot and stores the new ID at index 0,
+ * so the entity remembers the last MAX_ATTACK_IDS attacks that hit it.
+ *
+ * Ported from v4.0 (attack_update_id, DCurrent/openbor). Original concept
+ * by Kratus, encapsulated by Caskey, Damon V.
+ */
+void attack_update_id(entity *ent, unsigned int attack_id)
+{
+    int i = 0;
+
+    if(ent == NULL)
+    {
+        return;
+    }
+
+    //Shift from highest slot down toward the most recent one.
+    for(i = MAX_ATTACK_IDS - 1; i > 0; i--)
+    {
+        ent->attack_id_incoming[i] = ent->attack_id_incoming[i - 1];
+    }
+
+    ent->attack_id_incoming[0] = attack_id;
+}
+
+/*
+ * Return true if the supplied attack ID has already resolved against this
+ * entity, meaning the collision must NOT be resolved again this update.
+ *
+ * Attack boxes flagged with ignore_attack_id are an intentional exception:
+ * a module opted into per-update resolution by using the "ignoreattackid"
+ * command, so report "not a match" and let the caller resolve the collision.
+ * This preserves the behaviour of the original gate, which also skipped its
+ * ID check whenever the flag was set - no change for such attack boxes.
+ *
+ * Ported from v4.0 (attack_id_check_match, Caskey, Damon V.). The upstream
+ * "multihit" cheat parameter is deliberately omitted here - duplicate
+ * resolution is an engine bug and is always disabled in this build.
+ */
+int attack_id_check_match(entity *ent, s_collision_attack *attack, unsigned int attack_id)
+{
+    int i = 0;
+
+    if(ent == NULL)
+    {
+        return 0;
+    }
+
+    //Modules opt in to per-update resolution with the "ignoreattackid"
+    //command, which is the only place this flag is ever set. Report "not a
+    //match" so the collision resolves, matching the original gate, whose
+    //condition was likewise false whenever the flag was set.
+    //Note that upstream v4.0 returns true in this branch, which combined
+    //with its "continue" caller stops such attacks landing at all - that
+    //contradicts the documented ignoreattackid behaviour, so it is
+    //intentionally not copied here.
+    if(attack != NULL && attack->ignore_attack_id)
+    {
+        return 0;
+    }
+
+    for(i = 0; i < MAX_ATTACK_IDS; i++)
+    {
+        if(ent->attack_id_incoming[i] == attack_id)
+        {
+            return 1;
+        }
+    }
+
+    return 0;
+}
+
+
 void do_attack(entity *e)
 {
     int them;
@@ -19501,8 +19575,11 @@ void do_attack(entity *e)
             continue;
         }
 
-        // Attack IDs must be different.
-        if(target->attack_id_incoming == current_attack_id && !attack->ignore_attack_id)
+        // Attack must not have resolved against this target already.
+        // Without this check, an attack box that keeps overlapping a body
+        // box re-resolves on every update (the "multihit glitch"), which
+        // multiplies damage and stun when enemies attack from both sides.
+        if(attack_id_check_match(target, attack, current_attack_id))
         {
             continue;
         }
@@ -19773,7 +19850,7 @@ void do_attack(entity *e)
                             self->modeldata.animation[current_follow_id]->attackone = self->animation->attackone;
                         }
                         ent_set_anim(self, current_follow_id, 0);
-                        self->attack_id_incoming = current_attack_id;
+                        attack_update_id(self, current_attack_id);
                     }
 
                     if(!attack->no_flash)
@@ -19896,7 +19973,7 @@ void do_attack(entity *e)
                 //followed = 1; // quit loop, animation is changed
             }//end of if #055
 
-            self->attack_id_incoming = current_attack_id;
+            attack_update_id(self, current_attack_id);
             if(self == def)
             {
                 self->blocking = didblock;    // yeah, if get hit, stop blocking

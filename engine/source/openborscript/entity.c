@@ -185,7 +185,7 @@ HRESULT openbor_get_entity_property(ScriptVariant **varlist , ScriptVariant **pr
         case _ENTITY_ATTACK_ID_INCOMING:
 
             ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
-            (*pretvar)->lVal = (LONG)handle->attack_id_incoming;
+            (*pretvar)->lVal = (LONG)handle->attack_id_incoming[0];
 
             break;
 
@@ -501,7 +501,7 @@ HRESULT openbor_set_entity_property(ScriptVariant **varlist, ScriptVariant **pre
 
             if(SUCCEEDED(ScriptVariant_IntegerValue(varlist[ARG_VALUE], &temp_int)))
             {
-                handle->attack_id_incoming = temp_int;
+                handle->attack_id_incoming[0] = temp_int;
             }
 
             break;
