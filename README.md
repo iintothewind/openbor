@@ -1,8 +1,9 @@
  # OpenBOR
 
-> **本 fork 说明**：这个仓库主要提供 OpenBOR 3 的 CI 自动 release 构建（见
-> [Automated release builds](#automated-release-builds)）。所有改动均基于 openbor3
-> 分支（build 6391）之上，不改变上游引擎行为本身。
+> **About this fork**: This repository mainly provides CI-automated release builds
+> for OpenBOR 3 (see [Automated release builds](#automated-release-builds)). All
+> changes are based on top of the openbor3 branch (build 6391) and do not alter the
+> upstream engine behavior itself.
 
 OpenBOR is a continuation of the Beats Of Rage 2D game engine, which was originally
 created by the wonderful folks over at [Senile Team](http://www.senileteam.com). 
