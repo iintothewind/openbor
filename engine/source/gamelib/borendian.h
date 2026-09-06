@@ -25,13 +25,17 @@ typedef s16                 SInt16;
 typedef u16                 UInt16;
 typedef s32                 SInt32;
 typedef u32                 UInt32;
-#ifdef __x86_64__
-typedef signed long         SInt64;
-typedef unsigned long       UInt64;
-#else
+/*
+ * Use long long, which the C standard guarantees to be at least 64 bits on
+ * every target. The previous "#ifdef __x86_64__ -> long" was wrong for LLP64
+ * hosts: Windows x64 (MinGW) also defines __x86_64__, but there `long` is
+ * only 32 bits, which silently shrank UInt64 to 32 bits and made Swap64()'s
+ * ">>32 / <<32" shifts undefined behaviour, corrupting the heap (crash
+ * 0xC0000374 STATUS_HEAP_CORRUPTION on win-x64). long long is 64 bits on
+ * both LP64 (Linux/macOS x64) and LLP64 (Windows x64), so no branching needed.
+ */
 typedef signed long long    SInt64;
 typedef unsigned long long  UInt64;
-#endif
 
 #ifndef __inline__
 #define __inline__ __inline
