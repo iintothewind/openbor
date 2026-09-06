@@ -1,4 +1,9 @@
  # OpenBOR
+
+> **本 fork 说明**：这个仓库主要提供 OpenBOR 3 的 CI 自动 release 构建（见
+> [Automated release builds](#automated-release-builds)）。所有改动均基于 openbor3
+> 分支（build 6391）之上，不改变上游引擎行为本身。
+
 OpenBOR is a continuation of the Beats Of Rage 2D game engine, which was originally
 created by the wonderful folks over at [Senile Team](http://www.senileteam.com). 
 
@@ -35,7 +40,6 @@ Publishing a GitHub Release (`.github/workflows/release.yml`) automatically comp
 | Linux x64 | `OpenBOR-linux-x86_64` | ELF (x86-64) | Native `ubuntu-latest` runner |
 | Linux arm64 | `OpenBOR-linux-aarch64` | ELF (aarch64) | Native `ubuntu-24.04-arm` runner |
 | Windows x32 | `OpenBOR-windows-x32.exe` | PE32 (i686) | i686 cross-compile in build image |
-| Windows x64 | `OpenBOR-windows-x64.exe` | PE32+ (x86-64) | x86_64 cross-compile in build image |
 | PSP | `OpenBOR-psp-EBOOT.PBP` | PBP / EBOOT | Official `pspdev/pspdev` image |
 | PS Vita (PSV) | `OpenBOR-vita.vpk` | VPK | Official `vitasdk/vitasdk` image |
 | macOS (Apple Silicon) | `OpenBOR-macos-arm64.zip` | Mach-O (arm64) `.app` | Native `macos-14` runner |

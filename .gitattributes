@@ -46,6 +46,8 @@ Makefile  text eol=lf
 *.dll     binary
 *.exe     binary
 *.elf     binary
+*.res     binary
+*.rc      text eol=lf
 *.apk     binary
 *.aar     binary
 *.wav     binary

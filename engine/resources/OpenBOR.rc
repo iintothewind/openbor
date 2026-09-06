@@ -1,0 +1,32 @@
+// OpenBOR Windows 资源脚本 (由 windres 编译为 engine/resources/OpenBOR.res)
+//   交叉编译示例: i686-w64-mingw32-windres -i OpenBOR.rc -J rc -O coff -o OpenBOR.res
+// 图标已替换为银灰风格 (来源: borkpak/OpenBORmh.exe, 128x128 32bpp)。
+// VERSIONINFO 与上游保持一致。
+
+1 ICON "resources/OpenBOR_Icon_128x128.ico"
+
+1 VERSIONINFO
+ FILEVERSION 3, 0, 0, 0
+ PRODUCTVERSION 3, 0, 0, 0
+ FILETYPE 0x1
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904E4"
+    BEGIN
+      VALUE "CompanyName", "www.ChronoCrash.com"
+      VALUE "FileVersion", "1.0"
+      VALUE "FileDescription", "Ultimate 2D Game Engine"
+      VALUE "InternalName", "Open Beats of Rage"
+      VALUE "LegalCopyright", "OpenBOR"
+      VALUE "LegalTrademarks", "OpenBOR"
+      VALUE "OriginalFilename", "BOR"
+      VALUE "ProductName", "OpenBOR"
+      VALUE "ProductVersion", "3.0"
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1252
+  END
+END
