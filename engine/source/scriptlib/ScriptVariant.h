@@ -20,11 +20,8 @@ typedef enum VariantType
     VT_STR      = 6,    //char*
 } VARTYPE;
 
-// NOTE: 此处不再使用 #pragma pack(4)。
-// 该 union 含 8 字节指针 ptrVal；在 win64(LLP64) 下 pack(4) 会把指针字段
-// 强制按 4 字节对齐/取整，破坏其自然对齐与 sizeof(ScriptVariant)，是 win64
-// 移植的布局隐患。ScriptVariant 是纯内存态变体，不参与任何二进制序列化，
-// 去掉 pack(4) 恢复编译器默认对齐更安全；对 32 位与 LP64 无布局回归。
+#pragma pack(4)
+
 typedef struct ScriptVariant
 {
     union//value
@@ -36,6 +33,8 @@ typedef struct ScriptVariant
     };
     VARTYPE vt;//variatn type
 } ScriptVariant;
+
+#pragma pack()
 
 //clear the string cache
 void StrCache_Clear();
