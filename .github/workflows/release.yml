@@ -29,12 +29,12 @@ jobs:
       - name: Build Linux x64
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
-            bash scripts/build-linux.sh
+            bash -c 'git config --global --add safe.directory /src && bash scripts/build-linux.sh'
           cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-x86_64"
       - name: Build Windows x86 (i686, 32-bit)
         run: |
           docker run --rm -v "$GITHUB_WORKSPACE":/src -w /src obor-build:6392 \
-            bash scripts/build-win-docker.sh
+            bash -c 'git config --global --add safe.directory /src && bash scripts/build-win-docker.sh'
           cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x86.exe"
       - uses: actions/upload-artifact@v4
         with:
@@ -57,13 +57,13 @@ jobs:
       - uses: docker/setup-qemu-action@v3
       - name: Pull arm64 build image
         run: |
-          docker pull ghcr.io/iintothewind/openbor-build-arm64:6392
+          docker pull --platform linux/arm64 ghcr.io/iintothewind/openbor-build-arm64:6392
           docker tag  ghcr.io/iintothewind/openbor-build-arm64:6392 obor-build-arm64:6392
       - name: Build (QEMU emulated, slow)
         run: |
           docker run --rm --platform linux/arm64 \
             -v "$GITHUB_WORKSPACE":/src -w /src obor-build-arm64:6392 \
-            bash scripts/build-linux.sh
+            bash -c 'git config --global --add safe.directory /src && bash scripts/build-linux.sh'
           cp engine/OpenBOR "$RUNNER_TEMP/OpenBOR-linux-aarch64"
       - uses: actions/upload-artifact@v4
         with:
@@ -89,6 +89,7 @@ jobs:
               gcc-mingw-w64-x86-64 g++-mingw-w64-x86-64 \
               autoconf automake libtool nasm yasm pkg-config \
               make perl git curl ca-certificates file zlib1g-dev
+            git config --global --add safe.directory /src
             bash scripts/build-win64-docker.sh
           '
           cp engine/OpenBOR.exe "$RUNNER_TEMP/OpenBOR-windows-x64.exe"

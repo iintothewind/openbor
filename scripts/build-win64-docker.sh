@@ -133,7 +133,7 @@ fi
 cd "$REPO/engine"
 
 restore() {
-  git -C "$REPO" checkout -- engine/Makefile engine/resources/Info.plist 2>/dev/null || true
+  git -C "$REPO" checkout -- engine/Makefile engine/resources/Info.plist engine/resources/OpenBOR.res 2>/dev/null || true
   tracked_o="$(git -C "$REPO" ls-files '*.o')"
   [ -n "$tracked_o" ] && git -C "$REPO" checkout -- $tracked_o 2>/dev/null || true
 }
@@ -142,6 +142,15 @@ trap restore EXIT
 # 现代交叉 GCC 放宽：-Werror→-Wno-error + -fcommon（同 win32/linux）
 sed -i 's/-Werror/-Wno-error/; s/\(-std=gnu99\)/\1 -fcommon/' Makefile
 find . -name '*.o' -delete
+
+# 重新生成 64 位资源文件：入库的 engine/resources/OpenBOR.res 是预编译 i386
+# COFF（win32 交叉链专用），x86_64 链接器会因架构不符拒收。用交叉 windres 从
+# 最小 .rc（内嵌同目录 .ico）现场编一份 PE32+ 版覆盖它（该文件被 git 跟踪，
+# trap restore 会还原，不污染源码树）。
+( cd resources
+  printf '1 ICON "OpenBOR_Icon_32x32.ico"\n' > _win64.rc
+  "${TRIP}-windres" --output-format=coff _win64.rc OpenBOR.res
+  rm -f _win64.rc )
 
 export WINDEV="/usr/bin"
 export PREFIX="${TRIP}-"
