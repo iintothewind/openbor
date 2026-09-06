@@ -9499,7 +9499,9 @@ HRESULT openbor_openfilestream(ScriptVariant **varlist , ScriptVariant **pretvar
     FILE *handle = NULL;
     char path[MAX_BUFFER_LEN] = {""};
     char tmpname[MAX_BUFFER_LEN] = {""};
-    long size;
+    size_t size;   // win64(LLP64): 原 long 仅 4 字节, ftell 结果经其中转再进
+                   // malloc/fread(size_t) 会截断/符号扩展; 与 s_filestream.size
+                   // 及 buffer_pakfile(size_t*) 统一为 size_t。
 
     ScriptVariant_ChangeType(*pretvar, VT_INTEGER);
 
